@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 
 use ratatui::crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use ratatui::crossterm::execute;
-use torrocast_core::settings::{Platform, config_file};
+use torrocast_core::keeper::Keeper;
+use torrocast_core::settings::{Platform, config_file, default_library_dir};
 use torrocast_core::{Core, OutputKind, Settings};
 use torrocast_net::HttpClient;
 use torrocast_tui::app::App;
@@ -36,8 +37,33 @@ fn main() -> std::io::Result<()> {
         Some("muted") => OutputKind::Muted,
         _ => OutputKind::Device,
     };
-    let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone(), output);
+    // The library: in the folder the user chose, or in the platform's place for data.
+    let mut settings = settings;
+    if settings.device_id.is_none() {
+        settings.device_id = Some(torrocast_core::keeper::new_device_id());
+        if let Some(file) = file.as_deref() {
+            let _ = settings.save(file);
+        }
+    }
+    let directory = settings
+        .library_dir
+        .clone()
+        .map(std::path::PathBuf::from)
+        .or_else(|| default_library_dir(Platform::current(), &environment));
+    let keeper = match (&directory, &settings.device_id) {
+        (Some(directory), Some(device)) => {
+            Keeper::open(directory, device, &device_name(&environment)).map_err(|error| error.to_string())
+        }
+        _ => Err(String::new()),
+    };
+    let library = match &keeper {
+        Ok(keeper) => Ok(keeper.directory().display().to_string()),
+        Err(reason) => Err(reason.clone()),
+    };
+
+    let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone(), output, keeper.ok());
     let mut app = App::new(Lang::from_locale(&locale), settings);
+    app.library = library;
 
     let mut terminal = ratatui::init();
     // The mouse is a convenience; a terminal that refuses it still works.
@@ -93,9 +119,22 @@ fn main() -> std::io::Result<()> {
             break Ok(());
         }
     };
+    core.shutdown();
     let _ = execute!(stdout(), DisableMouseCapture);
     ratatui::restore();
     outcome
+}
+
+/// What this device is called in the library, for people reading the folder.
+fn device_name(environment: &HashMap<String, String>) -> String {
+    environment
+        .get("HOSTNAME")
+        .or_else(|| environment.get("COMPUTERNAME"))
+        .cloned()
+        .or_else(|| std::fs::read_to_string("/etc/hostname").ok())
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| std::env::consts::OS.to_owned())
 }
 
 /// Hands an address to the system. Only web addresses: a feed is someone

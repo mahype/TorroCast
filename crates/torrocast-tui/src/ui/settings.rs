@@ -68,6 +68,29 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
         Span::styled(format!(" {label:<34}"), background.fg(theme::MUTED)),
         Span::styled(fit(&country, width.saturating_sub(35)), if chosen { theme::selected() } else { Style::new() }),
     ]));
+    // Where the library lives: said, not yet changeable from here.
+    lines.push(Line::default());
+    lines.push(Line::styled(format!(" {}", lang.t("Library folder")), theme::heading()));
+    match &app.library {
+        Ok(directory) => {
+            lines.push(Line::raw(fit(&format!(" {directory}"), width)));
+            let advice = lang.t("Subscriptions, Up Next and positions live here. Set library_dir in config.toml to move it into a synced folder.");
+            lines.extend(
+                crate::text::wrap(advice, width.saturating_sub(2))
+                    .into_iter()
+                    .map(|row| Line::styled(format!(" {row}"), theme::muted())),
+            );
+        }
+        Err(reason) => {
+            let sentence =
+                format!("{} {reason}", lang.t("The library could not be opened; nothing is kept beyond this session."));
+            lines.extend(
+                crate::text::wrap(&sentence, width.saturating_sub(2))
+                    .into_iter()
+                    .map(|row| Line::styled(format!(" {row}"), Style::new().fg(theme::AMBER))),
+            );
+        }
+    }
     if let Some(notice) = &app.notice {
         lines.push(Line::default());
         lines.push(Line::styled(format!(" {notice}"), Style::new().fg(theme::AMBER)));

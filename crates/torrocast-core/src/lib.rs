@@ -2,6 +2,7 @@
 //! reads [`Event`]s; everything slow happens on worker threads in between.
 //! Nothing here knows what a terminal is.
 
+pub mod keeper;
 pub mod playback;
 pub mod settings;
 
@@ -10,6 +11,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use keeper::Keeper;
 use playback::{Action, Playback};
 use torrocast_player::{Media, Player, PlayerEvent};
 
@@ -25,6 +27,7 @@ pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merg
 pub use torrocast_feed::chapters::merge as merge_chapters;
 pub use torrocast_feed::notes::{self, Block, Document, Inline};
 pub use torrocast_feed::{Chapter, ChapterSource, Episode, Podcast};
+pub use torrocast_library::Subscription;
 pub use torrocast_player::OutputKind;
 
 /// Tags larger than this are cover art with chapters attached; not worth the traffic.
@@ -96,6 +99,13 @@ pub enum Command {
         mp3_url: Option<String>,
     },
     Transport(Transport),
+    /// Subscribes to a podcast, or ends the subscription. `guid` is the feed's `podcast:guid`, if it has one.
+    SetSubscribed {
+        feed_url: String,
+        title: String,
+        guid: Option<String>,
+        subscribed: bool,
+    },
 }
 
 /// Everything that concerns what is heard and what comes next.
@@ -161,6 +171,8 @@ pub enum Event {
         title: String,
         place: Option<usize>,
     },
+    /// All subscriptions, alphabetically — at the start and whenever they change, here or on another device.
+    Subscriptions(Vec<Subscription>),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -189,12 +201,19 @@ pub struct Core {
     /// Opened with the first episode, so browsing never touches the sound card.
     player: Option<(Player, Receiver<PlayerEvent>)>,
     found: (Sender<Found>, Receiver<Found>),
+    /// `None` when the library folder could not be opened; everything then lasts for the session.
+    keeper: Option<Keeper>,
 }
 
 impl Core {
     /// The core and the channel its events arrive on.
     #[must_use]
-    pub fn new(fetch: Arc<dyn Fetch>, settings: Settings, output: OutputKind) -> (Self, Receiver<Event>) {
+    pub fn new(
+        fetch: Arc<dyn Fetch>,
+        settings: Settings,
+        output: OutputKind,
+        keeper: Option<Keeper>,
+    ) -> (Self, Receiver<Event>) {
         let (events, receiver) = channel();
         let shared = Shared { fetch, apple: Apple::default(), fyyd: Fyyd, feeds: Mutex::new(HashMap::new()) };
         let core = Self {
@@ -205,7 +224,14 @@ impl Core {
             playback: Playback::default(),
             player: None,
             found: channel(),
+            keeper,
         };
+        let mut core = core;
+        if let Some(keeper) = &core.keeper {
+            keeper.restore(&mut core.playback);
+            let _ = core.events.send(Event::Subscriptions(keeper.subscriptions()));
+        }
+        core.publish();
         (core, receiver)
     }
 
@@ -247,6 +273,12 @@ impl Core {
                 Event::EpisodeResults { request, outcome }
             }),
             Command::Transport(transport) => self.transport(transport),
+            Command::SetSubscribed { feed_url, title, guid, subscribed } => {
+                if let Some(keeper) = &mut self.keeper {
+                    keeper.set_subscribed(keeper::podcast_id(guid.as_deref(), &feed_url), feed_url, title, subscribed);
+                    let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
+                }
+            }
             Command::Charts { request, category } => self.spawn(move |shared| {
                 let outcome = shared.apple.charts(shared.fetch.as_ref(), &country, category).map_err(Problem::from);
                 Event::Charts { request, outcome }
@@ -266,6 +298,10 @@ impl Core {
     }
 
     fn transport(&mut self, transport: Transport) {
+        // The library may know where this episode was left, even if this device never played it.
+        if let (Some(keeper), Transport::PlayNow(item) | Transport::Enqueue { item, .. }) = (&self.keeper, &transport) {
+            self.playback.hint_position(item, keeper.position_of(item));
+        }
         let actions = match transport {
             Transport::PlayNow(item) => self.playback.play_now(item),
             Transport::Enqueue { item, first } => {
@@ -297,7 +333,34 @@ impl Core {
             Transport::SpeedBy(delta) => self.playback.change_speed(delta),
         };
         self.carry_out(actions);
+        self.keep();
         self.publish();
+    }
+
+    /// Writes down what playback changed.
+    fn keep(&mut self) {
+        let notes = self.playback.take_notes();
+        if let Some(keeper) = &mut self.keeper {
+            keeper.save_notes(notes);
+            // What plays is kept at the head of the stored list. Should the
+            // program end without warning, the episode is still there next time.
+            let stored: Vec<QueueItem> = self
+                .playback
+                .now
+                .iter()
+                .map(|now| now.item.clone())
+                .chain(self.playback.up_next.iter().cloned())
+                .collect();
+            keeper.save_queue(&stored);
+        }
+    }
+
+    /// Call before the program ends: the place in the playing episode is written down.
+    pub fn shutdown(&mut self) {
+        let note = self.playback.note_now();
+        if let Some(keeper) = &mut self.keeper {
+            keeper.save_notes(note.into_iter().collect());
+        }
     }
 
     fn carry_out(&mut self, actions: Vec<Action>) {
@@ -363,8 +426,26 @@ impl Core {
             changed = true;
         }
         if changed {
+            self.keep();
+        }
+        if let Some(keeper) = &mut self.keeper {
+            keeper.save_now_and_then(&self.playback);
+            // Another device subscribed, queued or listened: take it over.
+            if keeper.look() {
+                keeper.restore(&mut self.playback);
+                let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
+                changed = true;
+            }
+        }
+        if changed {
             self.publish();
         }
+    }
+
+    /// Where the library lives, if it could be opened.
+    #[must_use]
+    pub fn library_directory(&self) -> Option<&std::path::Path> {
+        self.keeper.as_ref().map(Keeper::directory)
     }
 
     fn spawn(&self, work: impl FnOnce(&Shared) -> Event + Send + 'static) {
@@ -509,12 +590,18 @@ mod tests {
         let canned = Arc::new(Canned { asked: Mutex::new(Vec::new()) });
         let mut settings = Settings::for_locale("de_DE");
         settings.sources.fyyd = fyyd;
-        let (core, events) = Core::new(Arc::clone(&canned) as Arc<dyn Fetch>, settings, super::OutputKind::Null);
+        let (core, events) = Core::new(Arc::clone(&canned) as Arc<dyn Fetch>, settings, super::OutputKind::Null, None);
         (core, events, canned)
     }
 
+    /// The next answer to a command; the core's reports about itself are passed over.
     fn next(events: &std::sync::mpsc::Receiver<Event>) -> Event {
-        events.recv_timeout(Duration::from_secs(5)).expect("the worker answers")
+        loop {
+            match events.recv_timeout(Duration::from_secs(5)).expect("the worker answers") {
+                Event::Playback(_) | Event::Subscriptions(_) => {}
+                event => return event,
+            }
+        }
     }
 
     #[test]

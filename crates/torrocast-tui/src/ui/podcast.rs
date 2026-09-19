@@ -28,7 +28,12 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
     let shown_rows = description_rows.len().min(if view.expanded { UNFOLDED_ROWS } else { FOLDED_ROWS });
 
     let mut lines = vec![Line::styled(fit(title, text_width).trim_end().to_owned(), theme::bold())];
-    lines.push(Line::styled(author.unwrap_or_default(), theme::muted()));
+    let subscribed = view.reference.feed_url.as_deref().is_some_and(|feed_url| app.is_subscribed(feed_url));
+    let mut byline = vec![Span::styled(author.unwrap_or_default(), theme::muted())];
+    if subscribed {
+        byline.push(Span::styled(format!("   ✓ {}", lang.t("Subscribed")), Style::new().fg(theme::GREEN)));
+    }
+    lines.push(Line::from(byline));
     lines.push(Line::default());
 
     let mut facts: Vec<String> = match podcast {

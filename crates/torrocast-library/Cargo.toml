@@ -1,0 +1,17 @@
+[package]
+name = "torrocast-library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "The user's library in a folder of their choice: one journal per device, merged without conflicts."
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid = { version = "1", features = ["v4", "v5"] }

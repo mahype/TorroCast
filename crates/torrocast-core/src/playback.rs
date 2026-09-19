@@ -40,6 +40,12 @@ impl QueueItem {
             _ => self.audio_url.clone(),
         }
     }
+
+    /// The name the library files this episode under — the same on every device.
+    #[must_use]
+    pub fn library_id(&self) -> String {
+        torrocast_library::episode_id(&self.key())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,37 +98,91 @@ pub enum Action {
     },
 }
 
+/// Where an episode was left — something worth writing down.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProgressNote {
+    /// [`QueueItem::library_id`] of the episode.
+    pub key: String,
+    pub position_ms: u64,
+    pub duration_ms: Option<u64>,
+    /// Heard to the end.
+    pub played: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Playback {
     pub now: Option<NowPlaying>,
     pub up_next: Vec<QueueItem>,
     pub speed: f32,
-    /// Where episodes were left, by [`QueueItem::key`].
+    /// Where episodes were left, by [`QueueItem::library_id`].
     positions: HashMap<String, u64>,
+    /// Notes not yet collected by whoever keeps the library.
+    notes: Vec<ProgressNote>,
 }
 
 impl Default for Playback {
     fn default() -> Self {
-        Self { now: None, up_next: Vec::new(), speed: 1.0, positions: HashMap::new() }
+        Self { now: None, up_next: Vec::new(), speed: 1.0, positions: HashMap::new(), notes: Vec::new() }
     }
 }
 
 impl Playback {
+    /// What a library remembered from earlier sessions and other devices.
+    pub fn restore(&mut self, up_next: Vec<QueueItem>, positions: HashMap<String, u64>) {
+        let playing = self.now.as_ref().map(|now| now.item.key());
+        self.up_next = up_next.into_iter().filter(|item| Some(item.key()) != playing).collect();
+        self.positions = positions;
+    }
+
+    /// Where the library says an episode was left — on this device or another.
+    pub fn hint_position(&mut self, item: &QueueItem, position_ms: Option<u64>) {
+        match position_ms {
+            Some(position_ms) => self.positions.insert(item.library_id(), position_ms),
+            None => self.positions.remove(&item.library_id()),
+        };
+    }
+
+    /// The notes taken since the last call.
+    pub fn take_notes(&mut self) -> Vec<ProgressNote> {
+        std::mem::take(&mut self.notes)
+    }
+
+    /// A note about the episode playing right now, for the periodic save.
+    #[must_use]
+    pub fn note_now(&self) -> Option<ProgressNote> {
+        let now = self.now.as_ref().filter(|now| now.status != Status::Loading && now.position_ms > 0)?;
+        Some(ProgressNote {
+            key: now.item.library_id(),
+            position_ms: now.position_ms,
+            duration_ms: now.duration_ms,
+            played: false,
+        })
+    }
+
     fn remember(&mut self) {
         if let Some(now) = &self.now {
             let heard = now.duration_ms.is_some_and(|duration| now.position_ms + HEARD_MARGIN_MS >= duration);
+            let key = now.item.library_id();
             if heard {
-                self.positions.remove(&now.item.key());
+                self.positions.remove(&key);
             } else if now.position_ms > 0 {
-                self.positions.insert(now.item.key(), now.position_ms);
+                self.positions.insert(key.clone(), now.position_ms);
+            } else {
+                return;
             }
+            self.notes.push(ProgressNote {
+                key,
+                position_ms: now.position_ms,
+                duration_ms: now.duration_ms,
+                played: heard,
+            });
         }
     }
 
     fn start(&mut self, item: QueueItem) -> Vec<Action> {
         self.remember();
         self.up_next.retain(|queued| queued.key() != item.key());
-        let start_ms = self.positions.get(&item.key()).copied().unwrap_or(0);
+        let start_ms = self.positions.get(&item.library_id()).copied().unwrap_or(0);
         let mut actions = vec![Action::Load { audio_url: item.audio_url.clone(), start_ms }];
         let mp3_url =
             (item.is_mp3 && item.chapters.is_empty() && item.chapters_url.is_none()).then(|| item.audio_url.clone());
@@ -200,6 +260,8 @@ impl Playback {
         match now.status {
             Status::Playing => {
                 now.status = Status::Paused;
+                // A pause is a likely moment to walk away, or to pick up another device.
+                self.remember();
                 vec![Action::Pause]
             }
             Status::Paused => {
@@ -304,7 +366,10 @@ impl Playback {
     /// The episode ran out: on to the next one, without a pause.
     pub fn on_ended(&mut self) -> Vec<Action> {
         if let Some(now) = self.now.take() {
-            self.positions.remove(&now.item.key());
+            let key = now.item.library_id();
+            self.positions.remove(&key);
+            let position_ms = now.duration_ms.unwrap_or(now.position_ms);
+            self.notes.push(ProgressNote { key, position_ms, duration_ms: now.duration_ms, played: true });
         }
         self.next_episode()
     }

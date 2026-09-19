@@ -102,6 +102,25 @@ const GERMAN: &[(&str, &str)] = &[
     ("Width", "Breite"),
     ("Height", "Höhe"),
     ("Make the window larger — TorroCast keeps running.", "Zieh das Fenster größer – TorroCast läuft weiter."),
+    // subscriptions and library
+    ("Subscriptions", "Abos"),
+    ("Subscribed", "Abonniert"),
+    ("subscribe", "Abonnieren"),
+    ("subscribe to the podcast, or end the subscription", "Podcast abonnieren oder Abo beenden"),
+    ("No subscriptions yet. Open a podcast and press s.", "Noch keine Abos. Öffne einen Podcast und drück s."),
+    (
+        "They are kept in the library folder and appear on every device that shares it.",
+        "Sie liegen im Bibliotheks-Ordner und erscheinen auf jedem Gerät, das ihn teilt.",
+    ),
+    ("Library folder", "Bibliotheks-Ordner"),
+    (
+        "Subscriptions, Up Next and positions live here. Set library_dir in config.toml to move it into a synced folder.",
+        "Hier liegen Abos, „Als Nächstes“ und Hörpositionen. Mit library_dir in der config.toml legst du ihn in einen synchronisierten Ordner.",
+    ),
+    (
+        "The library could not be opened; nothing is kept beyond this session.",
+        "Die Bibliothek ließ sich nicht öffnen; nichts bleibt über diese Sitzung hinaus erhalten.",
+    ),
     // playback
     ("Up Next", "Als Nächstes"),
     ("Now playing", "Läuft gerade"),

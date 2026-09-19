@@ -3,6 +3,7 @@ members = [
     "crates/torrocast-net",
     "crates/torrocast-directory",
     "crates/torrocast-feed",
+    "crates/torrocast-library",
     "crates/torrocast-player",
     "crates/torrocast-core",
     "crates/torrocast-tui",

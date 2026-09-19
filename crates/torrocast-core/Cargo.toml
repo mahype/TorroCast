@@ -14,6 +14,7 @@ workspace = true
 torrocast-net = { path = "../torrocast-net" }
 torrocast-directory = { path = "../torrocast-directory" }
 torrocast-feed = { path = "../torrocast-feed" }
+torrocast-library = { path = "../torrocast-library" }
 torrocast-player = { path = "../torrocast-player" }
 serde.workspace = true
 toml = "0.8"

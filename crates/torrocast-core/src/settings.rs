@@ -12,6 +12,11 @@ pub struct Settings {
     /// Two-letter country for search and charts.
     pub country: String,
     pub sources: Sources,
+    /// The folder the library lives in — inside Dropbox, Syncthing, a NAS mount,
+    /// wherever it should be backed up and shared from. `None` is the default place.
+    pub library_dir: Option<String>,
+    /// This device's name in the library. Made up once, then kept.
+    pub device_id: Option<String>,
 }
 
 /// Apple is always on: it needs no setup and nothing works without a directory.
@@ -23,7 +28,7 @@ pub struct Sources {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { country: "us".to_owned(), sources: Sources::default() }
+        Self { country: "us".to_owned(), sources: Sources::default(), library_dir: None, device_id: None }
     }
 }
 
@@ -100,12 +105,26 @@ pub fn config_file(platform: Platform, environment: &HashMap<String, String>) ->
     Some(directory.join("config.toml"))
 }
 
+/// Where the library lives unless the user chose a folder.
+#[must_use]
+pub fn default_library_dir(platform: Platform, environment: &HashMap<String, String>) -> Option<PathBuf> {
+    let variable = |name: &str| environment.get(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+    let directory = match platform {
+        Platform::Linux => variable("XDG_DATA_HOME")
+            .or_else(|| Some(variable("HOME")?.join(".local").join("share")))?
+            .join("torrocast"),
+        Platform::MacOs => variable("HOME")?.join("Library").join("Application Support").join("TorroCast"),
+        Platform::Windows => variable("APPDATA")?.join("TorroCast"),
+    };
+    Some(directory.join("library"))
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
     use std::path::PathBuf;
 
-    use super::{Platform, Settings, config_file};
+    use super::{Platform, Settings, config_file, default_library_dir};
 
     fn environment(pairs: &[(&str, &str)]) -> HashMap<String, String> {
         pairs.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())).collect()
@@ -122,6 +141,14 @@ mod tests {
         let xdg = environment(&[("HOME", "/home/ada"), ("XDG_CONFIG_HOME", "/cfg")]);
         assert_eq!(config_file(Platform::Linux, &xdg), Some(PathBuf::from("/cfg/torrocast/config.toml")));
         assert_eq!(config_file(Platform::Windows, &home), None, "no APPDATA, no guess");
+        assert_eq!(
+            default_library_dir(Platform::Linux, &home),
+            Some(PathBuf::from("/home/ada/.local/share/torrocast/library"))
+        );
+        assert_eq!(
+            default_library_dir(Platform::MacOs, &home),
+            Some(PathBuf::from("/home/ada/Library/Application Support/TorroCast/library"))
+        );
     }
 
     #[test]

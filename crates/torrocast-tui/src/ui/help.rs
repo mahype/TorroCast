@@ -22,14 +22,19 @@ const LEFT: &[Group] = &[
             ("esc  ←  h", "one level back"),
             ("tab", "switch tab or panel"),
             ("/", "search, or filter a list"),
-            ("1 2 3 4", "menu (in an episode the digits open links)"),
+            ("1 … 5", "menu (in an episode the digits open links)"),
             ("r", "reload"),
             ("q  ctrl+c", "quit"),
         ],
     ),
     (
         "In lists",
-        &[("o", "reverse the order"), ("w", "open the website in the browser"), ("m", "unfold the description")],
+        &[
+            ("s", "subscribe to the podcast, or end the subscription"),
+            ("o", "reverse the order"),
+            ("w", "open the website in the browser"),
+            ("m", "unfold the description"),
+        ],
     ),
     ("In an episode", &[("1 … 9", "open the numbered link"), ("enter", "open the chapter's link")]),
 ];

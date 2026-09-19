@@ -8,7 +8,7 @@ use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use torrocast_core::{
     Chapter, ChapterSource, Command, EpisodeRef, Event, NowPlaying, PlaybackState, PodcastRef, Problem, ProviderId,
-    QueueItem, Settings, Status, Transport,
+    QueueItem, Settings, Status, Subscription, Transport,
 };
 use torrocast_tui::app::{App, SEARCH_DELAY, Section};
 use torrocast_tui::i18n::Lang;
@@ -220,7 +220,7 @@ fn escape_walks_back_one_level_at_a_time() {
 fn sources_are_switched_in_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('3'));
+    press(&mut app, KeyCode::Char('4'));
     assert!(screen(&app, 104, 28).contains("Ausgeschaltet"));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
@@ -316,7 +316,7 @@ fn the_player_sits_under_the_menu_on_every_screen() {
     assert!(!screen(&app, 104, 32).contains("Läuft gerade"), "nothing plays, nothing shown");
     app.terminal_height = 32;
     playing(&mut app, &["Eins", "Zwei"]);
-    for key in ['1', '2', '3', '4'] {
+    for key in ['1', '2', '3', '4', '5'] {
         press(&mut app, KeyCode::Char(key));
         let text = screen(&app, 104, 32);
         assert!(text.contains("0  Läuft gerade"), "missing on screen {key}");
@@ -377,7 +377,7 @@ fn the_playback_keys_work_everywhere_but_not_while_typing() {
 fn without_playback_the_space_bar_still_serves_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('3'));
+    press(&mut app, KeyCode::Char('4'));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Char(' '));
@@ -390,7 +390,7 @@ fn up_next_is_reordered_and_emptied_with_care() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
     playing(&mut app, &["Eins", "Zwei", "Drei"]);
-    press(&mut app, KeyCode::Char('2'));
+    press(&mut app, KeyCode::Char('3'));
     let text = screen(&app, 104, 32);
     assert!(text.contains("Als Nächstes · 3 Folgen · 3:00:00"));
     assert!(text.contains("Danach geht es ohne Pause mit Platz 1 weiter."));
@@ -479,4 +479,72 @@ fn the_players_buttons_can_be_clicked() {
     app.on_mouse(click(3, buttons_row + 1));
     assert_eq!(transports(&mut app), vec![Transport::Toggle, Transport::NextEpisode, Transport::PreviousChapter]);
     assert_eq!(app.section, Section::Discover, "a click on the player is not a click on the menu");
+}
+
+// ── subscriptions ────────────────────────────────────────────────────────────
+
+#[test]
+fn a_podcast_is_subscribed_where_it_is_looked_at() {
+    let mut app = app();
+    opened_podcast(&mut app);
+    press(&mut app, KeyCode::Char('s'));
+    let Some(Command::SetSubscribed { feed_url, title, guid, subscribed }) = app.commands.pop() else {
+        panic!("s subscribes")
+    };
+    assert_eq!(
+        (feed_url.as_str(), title.as_str(), subscribed),
+        ("https://beispiel.example/feed.xml", "Beispielsendung", true)
+    );
+    assert_eq!(
+        guid.as_deref(),
+        Some("917393e3-1b1e-5cef-ace4-edaa54e1f810"),
+        "the feed's own guid names it in the library"
+    );
+    assert!(screen(&app, 104, 28).contains("„Beispielsendung“ ist jetzt abonniert."));
+
+    // The core confirms; from then on the podcast shows it, and s ends the subscription.
+    app.on_event(Event::Subscriptions(vec![Subscription {
+        podcast: "917393e3".into(),
+        feed_url: "https://beispiel.example/feed.xml".into(),
+        title: "Beispielsendung".into(),
+    }]));
+    press(&mut app, KeyCode::Down);
+    assert!(screen(&app, 104, 28).contains("✓ Abonniert"));
+    press(&mut app, KeyCode::Char('s'));
+    assert!(matches!(app.commands.pop(), Some(Command::SetSubscribed { subscribed: false, .. })));
+}
+
+#[test]
+fn subscriptions_open_their_podcast_and_escape_leads_back() {
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('2'));
+    assert!(screen(&app, 104, 28).contains("Noch keine Abos."));
+
+    app.on_event(Event::Subscriptions(vec![Subscription {
+        podcast: "p".into(),
+        feed_url: "https://beispiel.example/feed.xml".into(),
+        title: "Beispielsendung".into(),
+    }]));
+    assert!(screen(&app, 104, 28).contains("Abos · 1"));
+    press(&mut app, KeyCode::Enter);
+    assert!(
+        matches!(app.commands.pop(), Some(Command::OpenFeed { feed_url, .. }) if feed_url == "https://beispiel.example/feed.xml")
+    );
+    assert_eq!(app.section, Section::Discover);
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.section, Section::Subscriptions, "back to where the podcast was opened from");
+}
+
+#[test]
+fn the_settings_say_where_the_library_lives() {
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('4'));
+    app.library = Ok("/home/ada/Dropbox/torrocast".into());
+    let text = screen(&app, 104, 30);
+    assert!(text.contains("Bibliotheks-Ordner"));
+    assert!(text.contains("/home/ada/Dropbox/torrocast"));
+    app.library = Err("the library was written by a newer version".into());
+    assert!(screen(&app, 104, 30).contains("Die Bibliothek ließ sich nicht öffnen"));
 }

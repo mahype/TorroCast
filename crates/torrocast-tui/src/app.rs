@@ -9,7 +9,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, Mo
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
     Category, Chapter, Command, Document, Episode, EpisodeRef, Event, PlaybackState, Podcast, PodcastRef, Problem,
-    ProviderId, QueueItem, Settings, Transport, merge, merge_chapters, notes,
+    ProviderId, QueueItem, Settings, Subscription, Transport, merge, merge_chapters, notes,
 };
 
 use crate::i18n::Lang;
@@ -34,18 +34,20 @@ const SEEK_FORWARD_MS: i64 = 30_000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Discover,
+    Subscriptions,
     UpNext,
     Settings,
     Help,
 }
 
 impl Section {
-    pub const ALL: [Self; 4] = [Self::Discover, Self::UpNext, Self::Settings, Self::Help];
+    pub const ALL: [Self; 5] = [Self::Discover, Self::Subscriptions, Self::UpNext, Self::Settings, Self::Help];
 
     #[must_use]
     pub fn title(self) -> &'static str {
         match self {
             Self::Discover => "Discover",
+            Self::Subscriptions => "Subscriptions",
             Self::UpNext => "Up Next",
             Self::Settings => "Settings",
             Self::Help => "Help",
@@ -134,6 +136,8 @@ pub struct PodcastView {
     pub expanded: bool,
     /// Opened from an episode found by search: go on to this episode once the feed is here.
     wanted_guid: Option<String>,
+    /// Where `esc` leads back to.
+    origin: Section,
 }
 
 impl PodcastView {
@@ -222,6 +226,10 @@ pub struct App {
     pub notice: Option<String>,
     /// The directories a search reaches right now, told by whoever owns the core.
     pub providers: Vec<ProviderId>,
+    pub subscriptions: Vec<Subscription>,
+    pub subscriptions_index: usize,
+    /// Where the library lives, or why there is none. Told by the main loop.
+    pub library: Result<String, String>,
     pub playback: PlaybackState,
     /// The last moments' loudness, oldest first, for the meter in the player.
     pub levels: VecDeque<f32>,
@@ -277,6 +285,9 @@ impl App {
             settings_index: 0,
             notice: None,
             providers,
+            subscriptions: Vec::new(),
+            subscriptions_index: 0,
+            library: Err(String::new()),
             playback: PlaybackState { speed: 1.0, ..PlaybackState::default() },
             levels: VecDeque::new(),
             up_next_index: 0,
@@ -412,6 +423,10 @@ impl App {
                 self.up_next_index = self.up_next_index.min(state.up_next.len().saturating_sub(1));
                 self.playback = *state;
             }
+            Event::Subscriptions(subscriptions) => {
+                self.subscriptions_index = self.subscriptions_index.min(subscriptions.len().saturating_sub(1));
+                self.subscriptions = subscriptions;
+            }
             Event::Level(level) => {
                 self.levels.push_back(level);
                 while self.levels.len() > LEVELS {
@@ -536,7 +551,11 @@ impl App {
             filtering: false,
             expanded: false,
             wanted_guid: None,
+            origin: self.section,
         });
+        // A podcast is always looked at within Discover, wherever it was opened from.
+        self.section = Section::Discover;
+        self.player_open = false;
     }
 
     fn open_episode(&mut self) {
@@ -638,11 +657,12 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.section = Section::Help,
             // Inside an episode the digits belong to the links.
-            KeyCode::Char(digit @ '1'..='4') if !(self.section == Section::Discover && self.episode.is_some()) => {
+            KeyCode::Char(digit @ '1'..='5') if !(self.section == Section::Discover && self.episode.is_some()) => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
             }
             code => match self.section {
                 Section::Discover => self.on_discover_key(code),
+                Section::Subscriptions => self.on_subscriptions_key(code),
                 Section::UpNext => self.on_up_next_key(code),
                 Section::Settings => self.on_settings_key(code),
                 Section::Help => {
@@ -705,7 +725,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => (self.section, self.player_open) = (Section::Help, false),
             // The menu stays one key away, as on every other screen.
-            KeyCode::Char(digit @ '1'..='4') => {
+            KeyCode::Char(digit @ '1'..='5') => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
                 self.player_open = false;
             }
@@ -716,6 +736,42 @@ impl App {
             }
             code => move_selection(&mut self.player_chapter, chapters.len(), code),
         }
+    }
+
+    fn on_subscriptions_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                if let Some(subscription) = self.subscriptions.get(self.subscriptions_index) {
+                    let reference = PodcastRef {
+                        title: subscription.title.clone(),
+                        feed_url: Some(subscription.feed_url.clone()),
+                        ..PodcastRef::default()
+                    };
+                    self.open_podcast(reference);
+                }
+            }
+            code => move_selection(&mut self.subscriptions_index, self.subscriptions.len(), code),
+        }
+    }
+
+    /// Whether the podcast on screen is one the user follows.
+    #[must_use]
+    pub fn is_subscribed(&self, feed_url: &str) -> bool {
+        self.subscriptions.iter().any(|subscription| subscription.feed_url == feed_url)
+    }
+
+    fn toggle_subscription(&mut self) {
+        let Some(view) = &self.podcast else { return };
+        let (Some(feed_url), Some(podcast)) = (view.reference.feed_url.clone(), view.podcast.as_ref()) else { return };
+        let subscribed = !self.is_subscribed(&feed_url);
+        let title = podcast.title.clone();
+        self.notice = Some(match (self.lang, subscribed) {
+            (Lang::De, true) => format!("„{title}“ ist jetzt abonniert."),
+            (Lang::De, false) => format!("„{title}“ ist nicht mehr abonniert."),
+            (Lang::En, true) => format!("Subscribed to “{title}”."),
+            (Lang::En, false) => format!("No longer subscribed to “{title}”."),
+        });
+        self.commands.push(Command::SetSubscribed { feed_url, title, guid: podcast.guid.clone(), subscribed });
     }
 
     fn on_up_next_key(&mut self, code: KeyCode) {
@@ -871,7 +927,11 @@ impl App {
     fn on_podcast_key(&mut self, code: KeyCode) {
         let Some(view) = self.podcast.as_mut() else { return };
         match code {
-            KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => self.podcast = None,
+            KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => {
+                self.section = view.origin;
+                self.podcast = None;
+            }
+            KeyCode::Char('s') => self.toggle_subscription(),
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => self.open_episode(),
             KeyCode::Char('/') => view.filtering = true,
             KeyCode::Char('o') => {
@@ -1033,6 +1093,7 @@ impl App {
                 }
                 self.on_discover_key(code);
             }
+            Section::Subscriptions => self.on_subscriptions_key(code),
             Section::UpNext => self.on_up_next_key(code),
             Section::Settings => self.on_settings_key(code),
             Section::Help => {}

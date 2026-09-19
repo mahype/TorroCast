@@ -2,10 +2,11 @@
 
 A podcast player with a portable core and a terminal UI.
 
-**Status: v0.2 in progress — find, read and listen.** Search podcasts and single
-episodes, browse charts and categories, read show notes and chapters, and play: streaming,
-tempo at the same pitch, chapter jumps, and an Up Next queue after the model of Pocket
-Casts. Subscriptions and the synced library folder come next.
+**Status: v0.2 — find, read, listen, keep.** Search podcasts and single episodes, browse
+charts and categories, read show notes and chapters, and play: streaming, tempo at the
+same pitch, chapter jumps, and an Up Next queue after the model of Pocket Casts.
+Subscriptions, Up Next and playback positions live in a library folder that a sync
+service can carry between devices.
 
 ## Run it
 
@@ -40,10 +41,16 @@ following `LANG`. An address typed into the search field is opened as a feed.
 - **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,
   search results included. When an episode ends the next one starts. `J` `K` reorder,
   `d` removes, `C` empties.
+- **Subscriptions:** `s` on a podcast subscribes; they are listed under their own menu entry.
+- **Library folder:** subscriptions, Up Next and the place in every episode are written
+  to a folder — one journal per device, so Dropbox, Syncthing or a NAS can share it
+  without ever producing a conflict. Set `library_dir` in `config.toml` to put it where
+  it is synced; see [docs/bibliothek-format.md](docs/bibliothek-format.md). What was
+  playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not yet: subscriptions, the synced library folder (so Up Next and positions do not
-survive a restart yet), downloads, cover art, Podcast Index, Opus and HE-AAC audio.
+Not yet: a list of new episodes across subscriptions, downloads, cover art, Podcast
+Index, Opus and HE-AAC audio, choosing the library folder from within the interface.
 
 ## Layout
 
@@ -52,8 +59,9 @@ survive a restart yet), downloads, cover art, Podcast Index, Opus and HE-AAC aud
 | `torrocast-net` | HTTP behind a trait that tests replace |
 | `torrocast-directory` | Directories: Apple, fyyd, and merging their answers |
 | `torrocast-feed` | Feed parsing, chapters, show notes — pure, no network |
+| `torrocast-library` | The library folder: per-device journals, merged without conflicts |
 | `torrocast-player` | Streaming, decoding, tempo at the same pitch (WSOLA), the sound card |
-| `torrocast-core` | Commands in, events out; playback and Up Next; settings. No user interface |
+| `torrocast-core` | Commands in, events out; playback, Up Next and the library's upkeep; settings. No user interface |
 | `torrocast-tui` | The terminal interface (binary `torrocast`) |
 
 The user interface contains no logic another front end would need too.
@@ -87,5 +95,5 @@ The planning documents are written in German.
 ## Roadmap
 
 - **v0.1** – search, podcast detail, episode list, show notes, chapters (no playback) — done
-- **v0.2** – subscriptions, library folder sync, playback, queue, downloads
+- **v0.2** – playback, Up Next, subscriptions, library folder — done; downloads still open
 - **later** – transcripts, per-podcast settings, gpodder-compatible server sync, native GUIs
