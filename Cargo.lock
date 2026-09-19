@@ -3447,7 +3447,7 @@ checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
 
 [[package]]
 name = "torrocast-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -3463,7 +3463,7 @@ dependencies = [
 
 [[package]]
 name = "torrocast-directory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -3474,7 +3474,7 @@ dependencies = [
 
 [[package]]
 name = "torrocast-feed"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "id3",
@@ -3485,7 +3485,7 @@ dependencies = [
 
 [[package]]
 name = "torrocast-library"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -3495,21 +3495,21 @@ dependencies = [
 
 [[package]]
 name = "torrocast-media"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "souvlaki",
 ]
 
 [[package]]
 name = "torrocast-net"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ureq",
 ]
 
 [[package]]
 name = "torrocast-player"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "rtrb",
@@ -3522,7 +3522,7 @@ dependencies = [
 
 [[package]]
 name = "torrocast-tui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "ctrlc",

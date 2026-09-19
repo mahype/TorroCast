@@ -50,15 +50,16 @@ pub fn take_over(socket: &Path, lang: Lang) -> Result<(Option<Remote>, bool), St
         Err(OpenError::Io(_)) => Ok((None, false)),
         Err(OpenError::Taken(status)) if status["mode"] == "daemon" => {
             let resume = matches!(status["now"]["status"].as_str(), Some("playing" | "loading"));
-            let _ = remote::ask(socket, &json!({ "do": "quit" }));
             let asked = Instant::now();
-            while remote::ask(socket, &json!({ "do": "status" })).is_ok() && asked.elapsed() < PATIENCE {
+            // Until the socket is ours: a widget may start the next background player in the very gap.
+            while asked.elapsed() < PATIENCE {
+                let _ = remote::ask(socket, &json!({ "do": "quit" }));
                 std::thread::sleep(Duration::from_millis(50));
+                if let Ok(remote) = Remote::open(socket, Mode::Tui, VERSION, code(lang)) {
+                    return Ok((Some(remote), resume));
+                }
             }
-            match Remote::open(socket, Mode::Tui, VERSION, code(lang)) {
-                Ok(remote) => Ok((Some(remote), resume)),
-                Err(_) => Ok((None, false)),
-            }
+            Err(lang.t("TorroCast in the background does not make room. End it with: torrocast ctl quit").to_owned())
         }
         Err(OpenError::Taken(_)) => Err(lang.t("TorroCast is open in another window already.").to_owned()),
     }

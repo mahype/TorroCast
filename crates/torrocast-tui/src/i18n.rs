@@ -150,6 +150,10 @@ const GERMAN: &[(&str, &str)] = &[
     ("Subscribed", "Abonniert"),
     ("TorroCast is open in another window already.", "TorroCast ist schon in einem anderen Fenster offen."),
     ("TorroCast is running already.", "TorroCast läuft schon."),
+    (
+        "TorroCast in the background does not make room. End it with: torrocast ctl quit",
+        "TorroCast im Hintergrund macht nicht Platz. Beende es mit: torrocast ctl quit",
+    ),
     ("subscribe", "Abonnieren"),
     ("subscribe to the podcast, or end the subscription", "Podcast abonnieren oder Abo beenden"),
     (

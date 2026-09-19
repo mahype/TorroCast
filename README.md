@@ -2,7 +2,7 @@
 
 A podcast player with a portable core and a terminal UI.
 
-**Status: v0.1 — find, read, listen, keep.** Search podcasts and single episodes, browse
+**Status: v0.2 — find, read, listen, keep.** Search podcasts and single episodes, browse
 charts and categories, read show notes and chapters, and play: streaming, tempo at the
 same pitch, chapter jumps, and an Up Next queue after the model of Pocket Casts.
 Subscriptions, Up Next and playback positions live in a library folder that a sync
