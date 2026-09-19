@@ -160,6 +160,8 @@ fn draw_episodes(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastVie
     let title_width = width.saturating_sub(DATE + LENGTH + MARKS + 5);
 
     let start = window(view.index, visible.len(), height, 1);
+
+    super::clickable(app, inner, start, 1, visible.len());
     let mut lines: Vec<Line<'_>> = visible
         .iter()
         .enumerate()

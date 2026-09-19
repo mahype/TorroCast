@@ -19,7 +19,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
 
-use crate::app::{App, MENU_WIDTH, MIN_HEIGHT, MIN_WIDTH, Section, Tab};
+use crate::app::{App, Hit, HitTarget, MENU_WIDTH, MIN_HEIGHT, MIN_WIDTH, Section, Tab};
 use crate::text::fit;
 use crate::theme;
 
@@ -29,6 +29,8 @@ const WIDE: u16 = 100;
 
 pub fn draw(frame: &mut Frame<'_>, app: &App) {
     let area = frame.area();
+    // What can be clicked is noted anew with every frame.
+    app.hits.borrow_mut().clear();
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         draw_too_small(frame, area, app);
         return;
@@ -286,6 +288,11 @@ fn hint_line(app: &App, hints: &[(&'static str, &'static str)]) -> Line<'static>
         spans.push(Span::styled(format!(" {}  ", app.lang.t(label)), theme::muted()));
     }
     Line::from(spans)
+}
+
+/// Notes that `area` holds the rows of a list, `first` being the entry in its top row.
+pub(crate) fn clickable(app: &App, area: Rect, first: usize, rows_each: u16, count: usize) {
+    app.hits.borrow_mut().push(Hit { area, target: HitTarget::Rows { first, rows_each, count } });
 }
 
 /// A rounded panel. The one that has the user's attention wears the accent.

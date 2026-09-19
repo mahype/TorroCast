@@ -60,6 +60,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
     }
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(app.playlist_item, playlist.items.len(), height, 3);
+    super::clickable(app, inner, start, 3, playlist.items.len());
     let mut lines = Vec::new();
     for (index, item) in playlist.items.iter().enumerate().skip(start).take(height.div_ceil(3)) {
         let chosen = index == app.playlist_item;
@@ -105,6 +106,7 @@ fn draw_list(frame: &mut Frame<'_>, area: Rect, app: &App) {
     }
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(app.playlists_index, playlists.len(), height, 1);
+    super::clickable(app, inner, start, 1, playlists.len());
     let lines: Vec<Line<'_>> = playlists
         .iter()
         .enumerate()

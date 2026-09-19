@@ -26,6 +26,14 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let titles: Vec<&str> = Tab::ALL.iter().map(|tab| lang.t(tab.title())).collect();
     let active = Tab::ALL.iter().position(|tab| *tab == app.tab).unwrap_or(0);
     let mut lines: Vec<Line<'_>> = tab_lines(&titles, active).into();
+    // The tabs can be clicked: each is as wide as its word, four columns apart.
+    let mut column = inner.x + 2;
+    for (tab, title) in Tab::ALL.iter().zip(&titles) {
+        let width = title.chars().count() as u16;
+        let area = Rect { x: column, y: inner.y, width, height: 2 };
+        app.hits.borrow_mut().push(crate::app::Hit { area, target: crate::app::HitTarget::Tab(*tab) });
+        column += width + 4;
+    }
     if app.tab == Tab::Search {
         let mut input = vec![Span::styled("  ⌕ ", theme::muted()), Span::raw(app.search.input.clone())];
         if editing {
@@ -143,6 +151,7 @@ fn draw_categories(frame: &mut Frame<'_>, area: Rect, app: &App) {
         Load::Ready => {
             let (width, height) = (usize::from(inner.width), usize::from(inner.height));
             let start = window(categories.index, categories.list.len(), height, 1);
+            super::clickable(app, inner, start, 1, categories.list.len());
             let lines: Vec<Line<'_>> = categories
                 .list
                 .iter()
@@ -202,6 +211,7 @@ fn draw_found_episodes(frame: &mut Frame<'_>, area: Rect, app: &App) {
 
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(search.episode_index, search.episodes.len(), height, 3);
+    super::clickable(app, inner, start, 3, search.episodes.len());
     let mut lines = Vec::new();
     for (index, episode) in search.episodes.iter().enumerate().skip(start).take(height.div_ceil(3)) {
         let chosen = index == search.episode_index;
@@ -272,6 +282,7 @@ fn draw_shows(
 
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(selected, shows.len(), height, 3);
+    super::clickable(app, inner, start, 3, shows.len());
     let mut lines = Vec::new();
     for (index, show) in shows.iter().enumerate().skip(start).take(height.div_ceil(3)) {
         let mut meta: Vec<&str> = show.author.as_deref().into_iter().collect();

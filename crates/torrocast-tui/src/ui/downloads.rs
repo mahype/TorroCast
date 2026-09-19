@@ -43,6 +43,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
 
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(app.downloads_index, downloads.len(), height, 3);
+    super::clickable(app, inner, start, 3, downloads.len());
     let mut lines = Vec::new();
     for (index, download) in downloads.iter().enumerate().skip(start).take(height.div_ceil(3)) {
         let chosen = index == app.downloads_index;

@@ -108,6 +108,7 @@ fn draw_chapters(frame: &mut Frame<'_>, area: Rect, app: &App, view: &EpisodeVie
     let height = usize::from(inner.height.saturating_sub(2));
     let width = usize::from(inner.width);
     let start = window(view.chapter_index, chapters.len(), height, 1);
+    super::clickable(app, inner, start, 1, chapters.len());
     let mut lines: Vec<Line<'_>> = chapters
         .iter()
         .enumerate()

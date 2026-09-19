@@ -810,3 +810,57 @@ fn playlists_are_opened_queued_whole_and_deleted_with_care() {
     press(&mut app, KeyCode::Esc);
     assert!(app.open_playlist.is_none());
 }
+
+// ── mouse ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn a_click_selects_a_row_and_a_second_click_opens_it() {
+    let mut app = app();
+    searched(
+        &mut app,
+        vec![
+            show("Erste", Some("https://a.example")),
+            show("Zweite", Some("https://b.example")),
+            show("Dritte", Some("https://c.example")),
+        ],
+    );
+    let text = screen(&app, 104, 28);
+    let row = text.lines().position(|line| line.contains("Zweite")).expect("the result is drawn") as u16;
+    let column = (text.lines().nth(usize::from(row)).expect("exists").find("Zweite").expect("found")) as u16;
+    // Byte offsets are not columns once box-drawing characters precede the text; the menu is 26 columns wide.
+    let column = column.min(40).max(30);
+    let click = |column: u16, row: u16| MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    };
+
+    app.on_mouse(click(column, row + 1));
+    assert_eq!(app.search.index, 1, "the second line of an entry belongs to it too");
+    assert!(!app.search.editing, "a click into the list leaves the search field");
+    assert!(app.podcast.is_none());
+    screen(&app, 104, 28);
+    app.on_mouse(click(column, row));
+    assert!(app.podcast.is_some(), "clicking what is selected opens it");
+}
+
+#[test]
+fn tabs_can_be_clicked() {
+    let mut app = app();
+    let text = screen(&app, 104, 28);
+    let row = text.lines().position(|line| line.contains("Kategorien")).expect("the tabs are drawn") as u16;
+    // "Suche    Charts    Kategorien" begins two columns into the panel, which begins at column 26.
+    let click = |column: u16| MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    };
+    app.on_mouse(click(26 + 1 + 2 + 5 + 4 + 2));
+    assert_eq!(app.tab, torrocast_tui::app::Tab::Charts);
+    assert!(
+        matches!(app.commands.pop(), Some(Command::Charts { .. })),
+        "a tab opened by mouse loads like one opened by key"
+    );
+}

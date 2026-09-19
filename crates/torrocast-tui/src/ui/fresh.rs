@@ -53,6 +53,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
 
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(app.new_index, episodes.len(), height, 3);
+    super::clickable(app, inner, start, 3, episodes.len());
     let mut lines = Vec::new();
     for (index, episode) in episodes.iter().enumerate().skip(start).take(height.div_ceil(3)) {
         let chosen = index == app.new_index;

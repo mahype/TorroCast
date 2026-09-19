@@ -137,14 +137,25 @@ pub fn notes(lang: Lang, document: &Document, width: usize) -> Vec<Line<'static>
     let mut lines = Vec::new();
     let mut previous_was_item = false;
     for block in &document.blocks {
-        let is_item = matches!(block, Block::Item(_));
+        let is_item = matches!(block, Block::Item { .. });
         if !lines.is_empty() && !(is_item && previous_was_item) {
             lines.push(Line::default());
         }
         match block {
             Block::Paragraph(inlines) => flow(words(inlines, Style::new()), width, "", "", &mut lines),
             Block::Heading(inlines) => flow(words(inlines, theme::heading()), width, "", "", &mut lines),
-            Block::Item(inlines) => flow(words(inlines, Style::new()), width, "• ", "  ", &mut lines),
+            Block::Item { inlines, depth } => {
+                let indent = "  ".repeat(usize::from(*depth).min(4));
+                // An inner list gets a quieter mark, as in print.
+                let mark = if *depth == 0 { "• " } else { "◦ " };
+                flow(
+                    words(inlines, Style::new()),
+                    width,
+                    &format!("{indent}{mark}"),
+                    &format!("{indent}  "),
+                    &mut lines,
+                );
+            }
         }
         previous_was_item = is_item;
     }

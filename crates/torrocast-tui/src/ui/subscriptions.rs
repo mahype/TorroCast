@@ -33,6 +33,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
     }
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let start = window(app.subscriptions_index, subscriptions.len(), height, 1);
+    super::clickable(app, inner, start, 1, subscriptions.len());
     let lines: Vec<Line<'_>> = subscriptions
         .iter()
         .enumerate()

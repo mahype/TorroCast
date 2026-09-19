@@ -15,14 +15,18 @@ pub struct Document {
 pub enum Block {
     Paragraph(Vec<Inline>),
     Heading(Vec<Inline>),
-    Item(Vec<Inline>),
+    /// A list entry; `depth` is 0 for an outer list, 1 for a list within it, and so on.
+    Item {
+        inlines: Vec<Inline>,
+        depth: u8,
+    },
 }
 
 impl Block {
     #[must_use]
     pub fn inlines(&self) -> &[Inline] {
         match self {
-            Self::Paragraph(inlines) | Self::Heading(inlines) | Self::Item(inlines) => inlines,
+            Self::Paragraph(inlines) | Self::Heading(inlines) | Self::Item { inlines, .. } => inlines,
         }
     }
 }
@@ -50,6 +54,8 @@ struct Builder {
     inlines: Vec<Inline>,
     text: String,
     kind: Option<Kind>,
+    /// How many lists are open around the current place.
+    lists: u8,
     /// Target and collected text of the `<a>` we are inside of.
     link: Option<(String, String)>,
 }
@@ -127,7 +133,7 @@ impl Builder {
         self.document.blocks.push(match kind {
             Kind::Paragraph => Block::Paragraph(inlines),
             Kind::Heading => Block::Heading(inlines),
-            Kind::Item => Block::Item(inlines),
+            Kind::Item => Block::Item { inlines, depth: self.lists.saturating_sub(1) },
         });
     }
 
@@ -260,10 +266,16 @@ pub fn document(source: &str) -> Document {
             ("a", true) => builder.close_link(),
             ("h1" | "h2" | "h3" | "h4" | "h5" | "h6", false) => builder.begin(Kind::Heading),
             ("li", false) => builder.begin(Kind::Item),
-            (
-                "p" | "div" | "br" | "hr" | "ul" | "ol" | "li" | "blockquote" | "tr" | "table" | "section" | "article",
-                _,
-            )
+            // What stands before an inner list belongs to the outer entry, so it is closed first.
+            ("ul" | "ol", false) => {
+                builder.end_block();
+                builder.lists = builder.lists.saturating_add(1);
+            }
+            ("ul" | "ol", true) => {
+                builder.end_block();
+                builder.lists = builder.lists.saturating_sub(1);
+            }
+            ("p" | "div" | "br" | "hr" | "li" | "blockquote" | "tr" | "table" | "section" | "article", _)
             | ("h1" | "h2" | "h3" | "h4" | "h5" | "h6", true) => builder.end_block(),
             _ => {}
         }
@@ -287,7 +299,7 @@ pub fn plain_text(source: &str) -> String {
                 })
                 .collect();
             match block {
-                Block::Item(_) => format!("• {text}"),
+                Block::Item { depth, .. } => format!("{}• {text}", "  ".repeat(usize::from(*depth))),
                 _ => text,
             }
         })
@@ -323,12 +335,35 @@ mod tests {
         assert_eq!(notes.blocks[1], Block::Heading(vec![text("Haushalt")]));
         assert_eq!(
             notes.blocks[2],
-            Block::Item(vec![text("Beschluss "), Inline::Link { text: "hier".into(), target: 1 }])
+            Block::Item {
+                inlines: vec![text("Beschluss "), Inline::Link { text: "hier".into(), target: 1 }],
+                depth: 0
+            }
         );
         assert!(
-            matches!(&notes.blocks[3], Block::Item(inlines) if inlines[1] == Inline::Link { text: "Karten".into(), target: 0 })
+            matches!(&notes.blocks[3], Block::Item { inlines, .. } if inlines[1] == Inline::Link { text: "Karten".into(), target: 0 })
         );
         assert_eq!(notes.blocks.len(), 4, "scripts and comments are not notes");
+    }
+
+    #[test]
+    fn lists_within_lists_keep_their_depth() {
+        let notes = document("<ul><li>Apple<ul><li>CPU</li><li>GPU</li></ul></li><li>Sonstiges</li></ul><p>Ende</p>");
+        let shape: Vec<(String, Option<u8>)> = notes
+            .blocks
+            .iter()
+            .map(|block| {
+                let words: String = block
+                    .inlines()
+                    .iter()
+                    .map(|inline| if let Inline::Text(text) = inline { text.as_str() } else { "" })
+                    .collect();
+                (words, if let Block::Item { depth, .. } = block { Some(*depth) } else { None })
+            })
+            .collect();
+        let expected = [("Apple", Some(0)), ("CPU", Some(1)), ("GPU", Some(1)), ("Sonstiges", Some(0)), ("Ende", None)];
+        assert_eq!(shape, expected.map(|(words, depth)| (words.to_owned(), depth)));
+        assert_eq!(plain_text("<ul><li>A<ul><li>B</li></ul></li></ul>"), "• A\n  • B");
     }
 
     #[test]

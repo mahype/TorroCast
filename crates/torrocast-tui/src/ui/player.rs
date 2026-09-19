@@ -232,6 +232,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, now: &NowPlaying) {
     let (width, height) = (usize::from(inner.width), usize::from(inner.height));
     let current = now.chapter_index();
     let start = window(app.player_chapter, chapters.len(), height, 1);
+    super::clickable(app, inner, start, 1, chapters.len());
     let lines: Vec<Line<'_>> = chapters
         .iter()
         .enumerate()

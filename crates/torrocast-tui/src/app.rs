@@ -1,11 +1,13 @@
 //! What the user is looking at, and what a key does to it. The app never
 //! fetches: it queues [`Command`]s for the core and is told the [`Event`]s.
 
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Position, Rect};
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
     Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode,
@@ -220,6 +222,24 @@ impl EpisodeView {
     }
 }
 
+/// Something on screen a click can mean. Noted by the drawing code, frame by frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hit {
+    pub area: Rect,
+    pub target: HitTarget,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HitTarget {
+    /// The rows of a list: `first` is the entry in the top row, each entry `rows_each` rows tall.
+    Rows {
+        first: usize,
+        rows_each: u16,
+        count: usize,
+    },
+    Tab(Tab),
+}
+
 /// A text being typed in the settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Field {
@@ -264,6 +284,8 @@ pub struct App {
     pub subscriptions: Vec<Subscription>,
     pub subscriptions_index: usize,
     pub covers: Covers,
+    /// What the last frame drew that can be clicked.
+    pub hits: RefCell<Vec<Hit>>,
     pub playlists: Vec<Playlist>,
     pub playlists_index: usize,
     /// The playlist being looked into, by its id, and the selection within it.
@@ -349,6 +371,7 @@ impl App {
             subscriptions: Vec::new(),
             subscriptions_index: 0,
             covers: Covers::default(),
+            hits: RefCell::new(Vec::new()),
             playlists: Vec::new(),
             playlists_index: 0,
             open_playlist: None,
@@ -1391,6 +1414,24 @@ impl App {
         match mouse.kind {
             MouseEventKind::ScrollUp => self.on_wheel(KeyCode::Up),
             MouseEventKind::ScrollDown => self.on_wheel(KeyCode::Down),
+            MouseEventKind::Down(MouseButton::Left) if mouse.column >= MENU_WIDTH => {
+                // Later things are drawn over earlier ones; the last hit is the one on top.
+                let at = Position { x: mouse.column, y: mouse.row };
+                let hit = self.hits.borrow().iter().rev().find(|hit| hit.area.contains(at)).copied();
+                match hit.map(|hit| (hit.area, hit.target)) {
+                    Some((_, HitTarget::Tab(tab))) if !self.player_open && self.podcast.is_none() => {
+                        self.search.editing = false;
+                        self.enter_tab(tab);
+                    }
+                    Some((area, HitTarget::Rows { first, rows_each, count })) => {
+                        let index = first + usize::from((mouse.row - area.y) / rows_each.max(1));
+                        if index < count {
+                            self.click_row(index);
+                        }
+                    }
+                    _ => {}
+                }
+            }
             MouseEventKind::Down(MouseButton::Left) if mouse.column < MENU_WIDTH => {
                 if self.on_player_click(mouse.column, mouse.row) {
                     return;
@@ -1402,6 +1443,50 @@ impl App {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// The selection of whichever list has the keyboard right now.
+    fn selection(&mut self) -> Option<&mut usize> {
+        if let Some((_, index)) = &mut self.picker {
+            return Some(index);
+        }
+        if self.player_open {
+            return Some(&mut self.player_chapter);
+        }
+        Some(match self.section {
+            Section::Discover => match (&mut self.episode, &mut self.podcast) {
+                (Some(view), _) => {
+                    // The only list in an episode is its chapters; a click there takes the focus along.
+                    view.focus = Focus::Chapters;
+                    &mut view.chapter_index
+                }
+                (None, Some(view)) => &mut view.index,
+                (None, None) => match self.tab {
+                    Tab::Search if self.search.episodes_mode => &mut self.search.episode_index,
+                    Tab::Search => &mut self.search.index,
+                    Tab::Charts => &mut self.charts.index,
+                    Tab::Categories => &mut self.categories.index,
+                },
+            },
+            Section::Subscriptions => &mut self.subscriptions_index,
+            Section::NewEpisodes => &mut self.new_index,
+            Section::UpNext => &mut self.up_next_index,
+            Section::Playlists if self.open_playlist.is_some() => &mut self.playlist_item,
+            Section::Playlists => &mut self.playlists_index,
+            Section::Downloads => &mut self.downloads_index,
+            Section::Settings | Section::Help => return None,
+        })
+    }
+
+    /// A click on a row selects it; a click on the selected row opens it, as enter would.
+    fn click_row(&mut self, index: usize) {
+        self.search.editing = false;
+        let Some(selection) = self.selection() else { return };
+        if *selection == index {
+            self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        } else {
+            *selection = index;
         }
     }
 
