@@ -2,13 +2,24 @@
 
 A podcast player with a portable core and a terminal UI.
 
-**Status: v0.2 — find, read, listen, keep.** Search podcasts and single episodes, browse
+**Status: v0.1 — find, read, listen, keep.** Search podcasts and single episodes, browse
 charts and categories, read show notes and chapters, and play: streaming, tempo at the
 same pitch, chapter jumps, and an Up Next queue after the model of Pocket Casts.
 Subscriptions, Up Next and playback positions live in a library folder that a sync
 service can carry between devices.
 
-## Run it
+## Install it
+
+Each release carries one archive per system: `linux-x86_64`, `macos-universal` (Apple Silicon
+and Intel) and `windows-x86_64`. Unpack it and start `torrocast` from a terminal.
+
+- **Linux:** needs ALSA (`alsa-lib` / `libasound2`), which every desktop has; PipeWire and
+  PulseAudio are reached through it.
+- **macOS:** the binary is not notarized yet. A download made with a browser is held back by
+  Gatekeeper; `xattr -d com.apple.quarantine torrocast` lets it through.
+- **Windows:** Windows Terminal is the place to run it; the old console shows fewer colours.
+
+## Build it
 
 ```
 cargo run --release

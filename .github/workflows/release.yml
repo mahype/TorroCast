@@ -1,0 +1,172 @@
+name: Release
+
+# A tag like v0.1.0 builds TorroCast for Linux, macOS and Windows and attaches the
+# three archives to a GitHub Release. "Run workflow" by hand builds the same
+# archives as artifacts of the run, without releasing anything — a rehearsal.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Opus through a libopus built along the way: the binaries then need no libopus on the user's machine.
+  FEATURES: opus-bundled
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # An older Ubuntu on purpose: a binary linked against an old glibc runs on newer systems, not the other way round.
+          - name: linux-x86_64
+            os: ubuntu-22.04
+          - name: macos-universal
+            os: macos-14
+          - name: windows-x86_64
+            os: windows-latest
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version from Cargo.toml, checked against the tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk -F'"' '/^version/ {print $2; exit}' Cargo.toml)"
+          if [[ "$GITHUB_REF_TYPE" == "tag" && "${GITHUB_REF_NAME#v}" != "$version" ]]; then
+            echo "error: tag $GITHUB_REF_NAME does not match Cargo.toml version $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macos-universal' && 'aarch64-apple-darwin, x86_64-apple-darwin' || '' }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.name }}
+
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev cmake
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cargo build --release --locked -p torrocast-tui --features "$FEATURES"
+          mkdir -p stage && cp target/release/torrocast stage/
+
+      # One file for both kinds of Mac: each architecture is built, then joined.
+      - name: Build (macOS, universal)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          for target in aarch64-apple-darwin x86_64-apple-darwin; do
+            cargo build --release --locked -p torrocast-tui --features "$FEATURES" --target "$target"
+          done
+          mkdir -p stage
+          lipo -create -output stage/torrocast \
+            target/aarch64-apple-darwin/release/torrocast target/x86_64-apple-darwin/release/torrocast
+          lipo -info stage/torrocast
+
+      # The C runtime is linked in, so the .exe needs no Visual C++ redistributable.
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          RUSTFLAGS: -C target-feature=+crt-static
+        run: |
+          cargo build --release --locked -p torrocast-tui --features "$FEATURES"
+          mkdir -p stage && cp target/release/torrocast.exe stage/
+
+      # With the Developer ID secrets in place the Mac binary is signed and notarized and opens
+      # without a warning. Without them it is signed ad hoc; RELEASING.md says what users then do.
+      - name: Sign and notarize (macOS, if the secrets are there)
+        if: runner.os == 'macOS'
+        env:
+          CERT_B64: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PW: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CERT_B64:-}" ]]; then
+            echo "No signing secrets: signing ad hoc."
+            codesign --force --sign - stage/torrocast
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/build.keychain"
+          kpw="$(openssl rand -base64 24)"
+          security create-keychain -p "$kpw" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kpw" "$keychain"
+          printf '%s' "$CERT_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$CERT_PW" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | xargs)
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kpw" "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          codesign --force --options runtime --timestamp --sign "$identity" stage/torrocast
+          ditto -c -k stage/torrocast "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --wait \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+
+      - name: The binary starts and says its version
+        shell: bash
+        run: |
+          set -euo pipefail
+          said="$(stage/torrocast* --version)"
+          echo "$said"
+          [[ "$said" == "torrocast ${{ steps.version.outputs.version }}" ]]
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="torrocast-${{ steps.version.outputs.version }}-${{ matrix.name }}"
+          mkdir "$name"
+          cp stage/torrocast* README.md LICENSE-MIT LICENSE-APACHE "$name/"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            7z a -tzip "$name.zip" "$name" > /dev/null
+            echo "file=$name.zip" >> "$GITHUB_OUTPUT"
+          else
+            tar -czf "$name.tar.gz" "$name"
+            echo "file=$name.tar.gz" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ steps.package.outputs.file }}
+          if-no-files-found: error
+
+  release:
+    name: Publish the GitHub Release
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum torrocast-* > SHA256SUMS && cat SHA256SUMS
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "TorroCast ${GITHUB_REF_NAME#v}" \
+            --notes-file docs/release-notes/${GITHUB_REF_NAME}.md
