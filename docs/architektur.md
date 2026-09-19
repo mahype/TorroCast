@@ -177,5 +177,5 @@ HE-AAC fehlt weiterhin; das gäbe es nur über die patentbehaftete FDK-Bibliothe
 | 5 | Private Feeds mit Token in der URL | Offen: Sie landen derzeit im Klartext im Ordner. |
 | 6 | macOS-Pfade | Umgesetzt: `~/Library/Application Support/TorroCast`. |
 | 7 | Verschlüsselung des Bibliotheks-Ordners | Nicht umgesetzt, wie empfohlen. |
-| 8 | Lizenz und Sichtbarkeit des Repos | Code steht unter `MIT OR Apache-2.0`; das Repo ist privat. **Deine Entscheidung steht aus.** |
-| 9 | Verhalten bei Stopp (`x`) | Umgesetzt als „Stelle merken, Player schließen“. **Von dir noch nicht bestätigt.** |
+| 8 | Lizenz und Sichtbarkeit des Repos | **Entschieden (19.09.2026):** Das Repo bleibt vorerst privat. Der Code steht unter `MIT OR Apache-2.0`. |
+| 9 | Verhalten bei Stopp (`x`) | **Entschieden (19.09.2026):** Stelle merken, Player schließen – so umgesetzt. |
