@@ -238,6 +238,10 @@ pub struct App {
     pub refresh_failed: usize,
     /// Where the library lives, or why there is none. Told by the main loop.
     pub library: Result<String, String>,
+    /// The folder being typed in the settings, while it is being typed.
+    pub library_input: Option<String>,
+    /// A folder the user has asked the library to move to; the main loop carries it out.
+    pub library_request: Option<String>,
     pub playback: PlaybackState,
     /// The last moments' loudness, oldest first, for the meter in the player.
     pub levels: VecDeque<f32>,
@@ -300,6 +304,8 @@ impl App {
             refresh_pending: 0,
             refresh_failed: 0,
             library: Err(String::new()),
+            library_input: None,
+            library_request: None,
             playback: PlaybackState { speed: 1.0, ..PlaybackState::default() },
             levels: VecDeque::new(),
             up_next_index: 0,
@@ -350,6 +356,7 @@ impl App {
     pub fn is_typing(&self) -> bool {
         match self.section {
             _ if self.player_open => false,
+            Section::Settings => self.library_input.is_some(),
             Section::Discover if self.episode.is_some() => false,
             Section::Discover => match &self.podcast {
                 Some(view) => view.filtering,
@@ -854,7 +861,9 @@ impl App {
 
     /// Applies `change` to whichever text field has the keyboard.
     fn edit(&mut self, change: impl FnOnce(&mut String)) {
-        if let Some(view) = self.podcast.as_mut().filter(|view| view.filtering) {
+        if let Some(folder) = &mut self.library_input {
+            change(folder);
+        } else if let Some(view) = self.podcast.as_mut().filter(|view| view.filtering) {
             change(&mut view.filter);
             view.index = 0;
         } else {
@@ -864,6 +873,20 @@ impl App {
     }
 
     fn on_typing_key(&mut self, code: KeyCode) {
+        if self.library_input.is_some() {
+            match code {
+                KeyCode::Char(character) => self.edit(|text| text.push(character)),
+                KeyCode::Backspace => self.edit(|text| {
+                    text.pop();
+                }),
+                KeyCode::Enter => {
+                    self.library_request = self.library_input.take().filter(|folder| !folder.trim().is_empty())
+                }
+                KeyCode::Esc => self.library_input = None,
+                _ => {}
+            }
+            return;
+        }
         match code {
             KeyCode::Char(character) => self.edit(|text| text.push(character)),
             KeyCode::Backspace => self.edit(|text| {
@@ -1036,8 +1059,8 @@ impl App {
         }
     }
 
-    /// The rows of the settings: 0 Apple, 1 Podcast Index, 2 fyyd, 3 country.
-    pub const SETTINGS_ROWS: usize = 4;
+    /// The rows of the settings: 0 Apple, 1 Podcast Index, 2 fyyd, 3 country, 4 library folder.
+    pub const SETTINGS_ROWS: usize = 5;
 
     fn on_settings_key(&mut self, code: KeyCode) {
         match (self.settings_index, code) {
@@ -1047,6 +1070,7 @@ impl App {
             }
             (3, KeyCode::Char(' ') | KeyCode::Enter | KeyCode::Right | KeyCode::Char('l')) => self.cycle_country(1),
             (3, KeyCode::Left | KeyCode::Char('h')) => self.cycle_country(-1),
+            (4, KeyCode::Enter) => self.library_input = Some(self.library.clone().unwrap_or_default()),
             (_, code) => move_selection(&mut self.settings_index, Self::SETTINGS_ROWS, code),
         }
     }

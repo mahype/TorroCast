@@ -548,6 +548,19 @@ fn the_settings_say_where_the_library_lives() {
     let text = screen(&app, 104, 30);
     assert!(text.contains("Bibliotheks-Ordner"));
     assert!(text.contains("/home/ada/Dropbox/torrocast"));
+    // Enter on the folder lets it be typed; enter again asks for the move.
+    for _ in 0..4 {
+        press(&mut app, KeyCode::Down);
+    }
+    press(&mut app, KeyCode::Enter);
+    assert!(app.is_typing());
+    app.on_key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+    type_text(&mut app, "~/Sync/torrocast");
+    assert!(screen(&app, 104, 30).contains("~/Sync/torrocast▏"));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.library_request.take().as_deref(), Some("~/Sync/torrocast"));
+    assert!(!app.is_typing());
+
     app.library = Err("the library was written by a newer version".into());
     assert!(screen(&app, 104, 30).contains("Die Bibliothek ließ sich nicht öffnen"));
 }

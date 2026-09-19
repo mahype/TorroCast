@@ -535,6 +535,22 @@ impl Core {
         }
     }
 
+    /// Moves the library to `directory`. On success everything the interface shows is sent again.
+    pub fn move_library(&mut self, directory: &std::path::Path) -> Result<(), String> {
+        let keeper = match &self.keeper {
+            Some(keeper) => keeper.relocate(directory),
+            None => return Err("no library is open".to_owned()),
+        }
+        .map_err(|error| error.to_string())?;
+        keeper.restore(&mut self.playback);
+        let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
+        self.keeper = Some(keeper);
+        self.keep();
+        self.publish();
+        self.refresh();
+        Ok(())
+    }
+
     /// Where the library lives, if it could be opened.
     #[must_use]
     pub fn library_directory(&self) -> Option<&std::path::Path> {

@@ -53,6 +53,8 @@ impl From<StoredItem> for QueueItem {
 
 pub struct Keeper {
     folder: Folder,
+    device: String,
+    device_name: String,
     saved: Instant,
     looked: Instant,
 }
@@ -60,7 +62,32 @@ pub struct Keeper {
 impl Keeper {
     pub fn open(directory: &Path, device: &str, device_name: &str) -> Result<Self, OpenError> {
         let folder = Folder::open(directory, device, device_name, now_ms())?;
-        Ok(Self { folder, saved: Instant::now(), looked: Instant::now() })
+        Ok(Self {
+            folder,
+            device: device.to_owned(),
+            device_name: device_name.to_owned(),
+            saved: Instant::now(),
+            looked: Instant::now(),
+        })
+    }
+
+    /// The same library in another folder — say, inside Dropbox. What this
+    /// device has written goes along; what is already there is merged in, as if
+    /// the two had always been one folder.
+    pub fn relocate(&self, directory: &Path) -> Result<Self, OpenError> {
+        let from = self.folder.root().join("devices").join(&self.device);
+        let to = directory.join("devices").join(&self.device);
+        if from != to {
+            std::fs::create_dir_all(&to)?;
+            for entry in std::fs::read_dir(&from)?.filter_map(Result::ok) {
+                let target = to.join(entry.file_name());
+                // Never over a file that is already there: it may hold more than ours.
+                if entry.path().is_file() && !target.exists() {
+                    std::fs::copy(entry.path(), target)?;
+                }
+            }
+        }
+        Self::open(directory, &self.device, &self.device_name)
     }
 
     #[must_use]
@@ -310,6 +337,25 @@ mod tests {
         let titles: Vec<&str> = restored.up_next.iter().map(|item| item.title.as_str()).collect();
         assert_eq!(titles, vec!["playing", "later"]);
         let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn moving_the_library_takes_everything_along_and_merges_what_is_there() {
+        let (old, new) = (scratch("move-old"), scratch("move-new"));
+        let mut laptop = Keeper::open(&old, "laptop", "Laptop").expect("opens");
+        laptop.set_subscribed("alpha".into(), "https://alpha.example".into(), "Alpha".into(), true);
+        // The new place is a shared folder another device already uses.
+        let mut desktop = Keeper::open(&new, "desktop", "Desktop").expect("opens");
+        desktop.set_subscribed("beta".into(), "https://beta.example".into(), "Beta".into(), true);
+
+        let moved = laptop.relocate(&new).expect("the new folder is writable");
+        let titles: Vec<String> = moved.subscriptions().into_iter().map(|subscription| subscription.title).collect();
+        assert_eq!(titles, vec!["Alpha", "Beta"]);
+        assert_eq!(moved.directory(), new.as_path());
+        assert!(old.join("devices/laptop/journal-000001.jsonl").exists(), "the old folder is left as a backup");
+        for directory in [old, new] {
+            let _ = std::fs::remove_dir_all(directory);
+        }
     }
 
     #[test]

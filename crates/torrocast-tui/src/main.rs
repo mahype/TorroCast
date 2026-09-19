@@ -109,6 +109,26 @@ fn main() -> std::io::Result<()> {
             app.on_event(event);
         }
 
+        if let Some(wanted) = app.library_request.take() {
+            // `~` is how people write their home folder; the file system does not know it.
+            let home = environment.get("HOME").or_else(|| environment.get("USERPROFILE")).cloned().unwrap_or_default();
+            let wanted = wanted.trim();
+            let folder = match wanted.strip_prefix('~') {
+                Some(rest) => format!("{home}{rest}"),
+                None => wanted.to_owned(),
+            };
+            match core.move_library(std::path::Path::new(&folder)) {
+                Ok(()) => {
+                    app.settings.library_dir = Some(folder.clone());
+                    app.settings_changed = true;
+                    app.notice = Some(format!("{} {folder}.", app.lang.t("The library now lives in")));
+                    app.library = Ok(folder);
+                }
+                Err(reason) => {
+                    app.notice = Some(format!("{} {reason}", app.lang.t("The library could not be moved there:")))
+                }
+            }
+        }
         if app.settings_changed {
             app.settings_changed = false;
             core.set_settings(app.settings.clone());

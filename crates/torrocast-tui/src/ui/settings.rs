@@ -71,10 +71,30 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
     // Where the library lives: said, not yet changeable from here.
     lines.push(Line::default());
     lines.push(Line::styled(format!(" {}", lang.t("Library folder")), theme::heading()));
+    let chosen = app.settings_index == 4;
+    if let Some(typed) = &app.library_input {
+        lines.push(Line::from(vec![
+            Span::styled(fit(&format!(" {typed}"), width.saturating_sub(1)).trim_end().to_owned(), theme::selected()),
+            Span::styled("▏", Style::new().fg(theme::ACCENT)),
+        ]));
+        let advice = lang.t(
+            "enter moves the library there, with everything in it; esc leaves it where it is. ~ is your home folder.",
+        );
+        lines.extend(
+            crate::text::wrap(advice, width.saturating_sub(2))
+                .into_iter()
+                .map(|row| Line::styled(format!(" {row}"), theme::muted())),
+        );
+        frame.render_widget(Paragraph::new(lines), inner);
+        return;
+    }
     match &app.library {
         Ok(directory) => {
-            lines.push(Line::raw(fit(&format!(" {directory}"), width)));
-            let advice = lang.t("Subscriptions, Up Next and positions live here. Set library_dir in config.toml to move it into a synced folder.");
+            lines.push(Line::styled(
+                fit(&format!(" {directory}"), width),
+                if chosen { theme::selected() } else { Style::new() },
+            ));
+            let advice = lang.t("Subscriptions, Up Next and positions live here. Press enter to move it — into Dropbox, Syncthing or onto a NAS, to back it up and share it between devices.");
             lines.extend(
                 crate::text::wrap(advice, width.saturating_sub(2))
                     .into_iter()

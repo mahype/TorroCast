@@ -14,14 +14,13 @@ Ohne Einstellung im Datenverzeichnis der Plattform:
 | macOS | `~/Library/Application Support/TorroCast/library` |
 | Windows | `%APPDATA%\TorroCast\library` |
 
-Um ihn zu teilen und mitzusichern, in der `config.toml` einen eigenen Ort setzen:
+Um ihn zu teilen und mitzusichern: **Einstellungen → Bibliotheks-Ordner → `enter`**, den
+neuen Ort eintippen (`~` steht für das Home-Verzeichnis), `enter`. Was dieses Gerät
+geschrieben hat, zieht mit um; liegt am neuen Ort schon eine Bibliothek eines anderen
+Geräts, wird beides zusammengeführt. Der alte Ordner bleibt als Sicherung liegen. Auf
+jedem weiteren Gerät denselben synchronisierten Ordner wählen.
 
-```toml
-library_dir = "/home/ich/Dropbox/torrocast"
-```
-
-Auf jedem Gerät denselben (synchronisierten) Ordner eintragen. Die Einstellungen zeigen
-den aktuellen Ort an.
+In der `config.toml` steht der Ort als `library_dir`.
 
 ## Aufbau
 
@@ -88,4 +87,3 @@ Andere Geräte werden alle 30 Sekunden eingelesen.
 - Beobachten des Ordners statt Nachsehen im Takt.
 - Erkennen einer kopierten Geräte-Kennung (geklontes Home-Verzeichnis).
 - Einstellungen und Favoriten im Ordner; mehrere Playlists (das Format sieht sie vor).
-- Den Ordner in der Oberfläche wählen (bisher nur über `config.toml`).

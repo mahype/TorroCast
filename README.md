@@ -35,7 +35,8 @@ following `LANG`. An address typed into the search field is opened as a feed.
   range requests, never by downloading the episode.
 - **Playback:** `p` plays the selected episode, streaming while it downloads. `space`
   pauses, `,` `.` jump by chapter, `b` `f` by 30 seconds, `-` `+` change the tempo without
-  changing the pitch, `n` goes to the next episode, `x` stops and remembers the place.
+  changing the pitch, `n` goes to the next episode, `x` stops and remembers the place,
+  `t` sets a sleep timer.
   The player sits under the menu on every screen, with a level meter and clickable
   buttons; `0` opens the large player with the chapter list.
 - **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,
@@ -47,13 +48,13 @@ following `LANG`. An address typed into the search field is opened as a feed.
   `r`; playable and queueable from the list.
 - **Library folder:** subscriptions, Up Next and the place in every episode are written
   to a folder — one journal per device, so Dropbox, Syncthing or a NAS can share it
-  without ever producing a conflict. Set `library_dir` in `config.toml` to put it where
-  it is synced; see [docs/bibliothek-format.md](docs/bibliothek-format.md). What was
+  without ever producing a conflict. Settings → library folder moves it to where it is
+  synced, data included; see [docs/bibliothek-format.md](docs/bibliothek-format.md). What was
   playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
 Not yet: downloads, cover art, Podcast
-Index, Opus and HE-AAC audio, choosing the library folder from within the interface.
+Index, Opus and HE-AAC audio.
 
 ## Layout
 

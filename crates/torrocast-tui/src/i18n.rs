@@ -127,9 +127,15 @@ const GERMAN: &[(&str, &str)] = &[
     ),
     ("Library folder", "Bibliotheks-Ordner"),
     (
-        "Subscriptions, Up Next and positions live here. Set library_dir in config.toml to move it into a synced folder.",
-        "Hier liegen Abos, „Als Nächstes“ und Hörpositionen. Mit library_dir in der config.toml legst du ihn in einen synchronisierten Ordner.",
+        "Subscriptions, Up Next and positions live here. Press enter to move it — into Dropbox, Syncthing or onto a NAS, to back it up and share it between devices.",
+        "Hier liegen Abos, „Als Nächstes“ und Hörpositionen. Mit enter verlegst du ihn – in die Dropbox, zu Syncthing oder auf ein NAS, um ihn mitzusichern und zwischen Geräten zu teilen.",
     ),
+    (
+        "enter moves the library there, with everything in it; esc leaves it where it is. ~ is your home folder.",
+        "enter verlegt die Bibliothek dorthin, mit allem, was darin ist; esc lässt sie, wo sie ist. ~ ist dein Home-Verzeichnis.",
+    ),
+    ("The library now lives in", "Die Bibliothek liegt jetzt in"),
+    ("The library could not be moved there:", "Die Bibliothek ließ sich nicht dorthin verlegen:"),
     (
         "The library could not be opened; nothing is kept beyond this session.",
         "Die Bibliothek ließ sich nicht öffnen; nichts bleibt über diese Sitzung hinaus erhalten.",
