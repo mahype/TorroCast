@@ -17,10 +17,12 @@ jobs:
         with:
           components: rustfmt, clippy
       # cpal talks to ALSA on Linux and needs its headers to build.
-      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      # … and the optional Opus support links the system's libopus.
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev libopus-dev
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all -- --check
       - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --all-targets --features torrocast-tui/opus -- -D warnings
 
   # The core must work everywhere; the TUI is meant to.
   test:

@@ -17,3 +17,9 @@ rtrb = "0.3"
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "vorbis", "ogg", "flac", "wav", "pcm"] }
 tempfile = "3"
 ureq = "2"
+symphonia-adapter-libopus = { version = "0.2", default-features = false, optional = true }
+
+[features]
+# Opus needs libopus: the system's (`opus`), or one built along the way, which takes cmake (`opus-bundled`).
+opus = ["dep:symphonia-adapter-libopus"]
+opus-bundled = ["opus", "symphonia-adapter-libopus/bundled"]

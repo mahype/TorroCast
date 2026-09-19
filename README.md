@@ -21,6 +21,9 @@ following `LANG`. An address typed into the search field is opened as a feed.
 
 `TORROCAST_OUTPUT=muted` plays without touching the sound card.
 
+Opus episodes need libopus: `cargo run --release --features opus` links the system's,
+`--features opus-bundled` builds one along the way (needs cmake).
+
 ## What it does
 
 - **Search** Apple's podcast directory for shows or, with `e`, for single episodes;
@@ -63,7 +66,7 @@ following `LANG`. An address typed into the search field is opened as a feed.
   playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not yet: media keys on macOS and Windows, Opus and HE-AAC audio.
+Not yet: media keys on macOS and Windows, HE-AAC audio.
 
 ## Layout
 

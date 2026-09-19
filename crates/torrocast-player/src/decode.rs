@@ -2,15 +2,34 @@
 //! the next piece of audio, a seek, and the length.
 
 use std::io::ErrorKind;
+use std::sync::OnceLock;
 
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::{CODEC_TYPE_NULL, Decoder as Codec, DecoderOptions};
+use symphonia::core::codecs::{CODEC_TYPE_NULL, CodecRegistry, Decoder as Codec, DecoderOptions};
 use symphonia::core::errors::Error;
 use symphonia::core::formats::{FormatOptions, FormatReader, SeekMode, SeekTo};
 use symphonia::core::io::{MediaSource, MediaSourceStream};
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::core::units::{Time, TimeBase};
+
+/// The codecs this build can decode: symphonia's own, and Opus where libopus was built in.
+fn codecs() -> &'static CodecRegistry {
+    static CODECS: OnceLock<CodecRegistry> = OnceLock::new();
+    CODECS.get_or_init(|| {
+        let mut registry = CodecRegistry::new();
+        symphonia::default::register_enabled_codecs(&mut registry);
+        #[cfg(feature = "opus")]
+        registry.register_all::<symphonia_adapter_libopus::OpusDecoder>();
+        registry
+    })
+}
+
+/// Whether this build plays Opus.
+#[must_use]
+pub const fn plays_opus() -> bool {
+    cfg!(feature = "opus")
+}
 
 pub struct Decoder {
     format: Box<dyn FormatReader>,
@@ -49,9 +68,7 @@ impl Decoder {
             .find(|track| track.codec_params.codec != CODEC_TYPE_NULL)
             .ok_or_else(|| "no audio in this file".to_owned())?;
         let parameters = track.codec_params.clone();
-        let codec = symphonia::default::get_codecs()
-            .make(&parameters, &DecoderOptions::default())
-            .map_err(|error| error.to_string())?;
+        let codec = codecs().make(&parameters, &DecoderOptions::default()).map_err(|error| error.to_string())?;
         let sample_rate = parameters.sample_rate.ok_or_else(|| "unknown sample rate".to_owned())?;
         let duration_ms = parameters.n_frames.map(|frames| frames * 1000 / u64::from(sample_rate));
         Ok(Self {

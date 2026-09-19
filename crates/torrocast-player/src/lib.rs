@@ -18,6 +18,7 @@ use decode::Decoder;
 use output::{Controls, Output};
 use stretch::Stretcher;
 
+pub use decode::plays_opus;
 pub use output::OutputKind;
 pub use stretch::{MAX_SPEED, MIN_SPEED};
 

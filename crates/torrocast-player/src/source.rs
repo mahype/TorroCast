@@ -13,6 +13,10 @@ use torrocast_net::USER_AGENT;
 
 /// A reader that has waited this long for bytes gives up: the connection is gone.
 const STALLED: Duration = Duration::from_secs(30);
+/// A read this far ahead of the download is not waited for: that part is fetched on its own.
+const FAR_AHEAD: u64 = 1024 * 1024;
+/// How much is fetched at a time for a place the download has not reached.
+const SIDE_BYTES: u64 = 512 * 1024;
 
 #[derive(Default)]
 struct Progress {
@@ -33,6 +37,10 @@ pub struct HttpSource {
     shared: Arc<Shared>,
     reader: File,
     position: u64,
+    url: String,
+    agent: ureq::Agent,
+    /// A piece of the episode from beyond the download: where it starts, and its bytes.
+    side: Option<(u64, Vec<u8>)>,
     // Deletes the file when the source goes away.
     _file: NamedTempFile,
 }
@@ -82,7 +90,7 @@ impl HttpSource {
                 download.changed.notify_all();
             }
         });
-        Ok(Self { shared, reader, position: 0, _file: file })
+        Ok(Self { shared, reader, position: 0, url: url.to_owned(), agent, side: None, _file: file })
     }
 }
 
@@ -94,8 +102,51 @@ impl Drop for HttpSource {
     }
 }
 
+impl HttpSource {
+    /// Serves a read from beyond the download with a request of its own. A
+    /// jump to the last hour of an episode, or a demuxer looking at the end of
+    /// the file for its length, then costs one small request instead of the
+    /// wait for everything before it. `None` if the server will not do ranges.
+    fn read_far_ahead(&mut self, buffer: &mut [u8], total: u64) -> Option<usize> {
+        let covered = self
+            .side
+            .as_ref()
+            .is_some_and(|(start, bytes)| (*start..*start + bytes.len() as u64).contains(&self.position));
+        if !covered {
+            let end = (self.position + SIDE_BYTES).min(total) - 1;
+            let response =
+                self.agent.get(&self.url).set("Range", &format!("bytes={}-{end}", self.position)).call().ok()?;
+            if response.status() != 206 {
+                return None;
+            }
+            let mut bytes = Vec::new();
+            response.into_reader().take(SIDE_BYTES).read_to_end(&mut bytes).ok()?;
+            if bytes.is_empty() {
+                return None;
+            }
+            self.side = Some((self.position, bytes));
+        }
+        let (start, bytes) = self.side.as_ref()?;
+        let from = usize::try_from(self.position - start).ok()?;
+        let count = buffer.len().min(bytes.len() - from);
+        buffer[..count].copy_from_slice(&bytes[from..from + count]);
+        self.position += count as u64;
+        Some(count)
+    }
+}
+
 impl Read for HttpSource {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let far_ahead = self.shared.progress.lock().ok().and_then(|progress| {
+            let total = progress.total?;
+            (!progress.finished && self.position < total && self.position > progress.downloaded + FAR_AHEAD)
+                .then_some(total)
+        });
+        if let Some(total) = far_ahead
+            && let Some(count) = self.read_far_ahead(buffer, total)
+        {
+            return Ok(count);
+        }
         let available = {
             let mut progress = self.shared.progress.lock().map_err(|_| io::Error::other("download thread panicked"))?;
             loop {

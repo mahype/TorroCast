@@ -22,6 +22,11 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 [dev-dependencies]
 torrocast-feed = { path = "../torrocast-feed" }
 
+[features]
+# Opus playback; see torrocast-player.
+opus = ["torrocast-core/opus"]
+opus-bundled = ["torrocast-core/opus-bundled"]
+
 [[bin]]
 name = "torrocast"
 path = "src/main.rs"

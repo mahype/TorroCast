@@ -15,5 +15,7 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [ ] Playlists: umbenennen, umsortieren; Playlists nach Regeln (Smart Playlists)
 - [x] Bibliotheks-Ordner: verdichtete Schnappschüsse – ab 128 KiB faltet ein Gerät beim Start seine Journale zu einem Schnappschuss
 - [ ] Bibliotheks-Ordner: Ordner beobachten statt alle 30 s nachsehen; kopierte Geräte-Kennung erkennen; Einstellungen und Favoriten im Ordner
-- [ ] Opus und HE-AAC
+- [x] Opus: mit `--features opus` (nutzt das libopus des Systems) oder `opus-bundled` (baut es mit, braucht cmake) – mit einer echten Opus-Folge geprüft
+- [x] Weite Sprünge warten nicht mehr auf den Download, sondern holen die Stelle per Teilabruf
+- [ ] HE-AAC (nur über die patentbehaftete FDK-Bibliothek zu haben; bewusst zurückgestellt)
 - [ ] Maus: Klicks in Listen; verschachtelte Listen in Shownotes
