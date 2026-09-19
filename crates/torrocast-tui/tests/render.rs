@@ -826,9 +826,8 @@ fn a_click_selects_a_row_and_a_second_click_opens_it() {
     );
     let text = screen(&app, 104, 28);
     let row = text.lines().position(|line| line.contains("Zweite")).expect("the result is drawn") as u16;
-    let column = (text.lines().nth(usize::from(row)).expect("exists").find("Zweite").expect("found")) as u16;
-    // Byte offsets are not columns once box-drawing characters precede the text; the menu is 26 columns wide.
-    let column = column.min(40).max(30);
+    // Somewhere inside the list, which begins right of the 26 columns of the menu.
+    let column = 34;
     let click = |column: u16, row: u16| MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column,

@@ -18,4 +18,5 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [x] Opus: mit `--features opus` (nutzt das libopus des Systems) oder `opus-bundled` (baut es mit, braucht cmake) – mit einer echten Opus-Folge geprüft
 - [x] Weite Sprünge warten nicht mehr auf den Download, sondern holen die Stelle per Teilabruf
 - [ ] HE-AAC (nur über die patentbehaftete FDK-Bibliothek zu haben; bewusst zurückgestellt)
-- [ ] Maus: Klicks in Listen; verschachtelte Listen in Shownotes
+- [x] Maus: Ein Klick wählt eine Zeile, ein zweiter öffnet sie; Reiter sind anklickbar
+- [x] Verschachtelte Listen in Shownotes behalten ihre Einrückung
