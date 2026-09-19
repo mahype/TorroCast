@@ -2,6 +2,10 @@
 
 Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvollziehbar ist.
 
+**Stand 19.09.2026, abends:** Die ursprüngliche Liste ist abgearbeitet. Was unten noch offen ist, wurde
+bewusst zurückgestellt – weil es eine Entscheidung von dir braucht, Hardware, die hier nicht zur Hand
+ist (macOS, Windows), oder einen echten Schlüssel zum Testen.
+
 - [x] Schlaf-Timer (`t`: 15, 30, 45, 60 Minuten, Ende der Folge)
 - [x] Bibliotheks-Ordner in den Einstellungen wählen, vorhandene Daten ziehen mit um
 - [x] Podcast Index als zuschaltbare Quelle mit eigenem Schlüssel des Nutzers (Suche; mit echtem Schlüssel noch ungetestet – nur die Ablehnung eines falschen ist gegen den Dienst geprüft)
@@ -20,3 +24,14 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [ ] HE-AAC (nur über die patentbehaftete FDK-Bibliothek zu haben; bewusst zurückgestellt)
 - [x] Maus: Ein Klick wählt eine Zeile, ein zweiter öffnet sie; Reiter sind anklickbar
 - [x] Verschachtelte Listen in Shownotes behalten ihre Einrückung
+- [ ] OPML-Import und -Export (stand für v0.2 in der Funktionssammlung, ist noch nicht gebaut)
+- [ ] Episodenzustände „archiviert“ und „Favorit“; Statistiken; Transkripte
+- [ ] Private Feeds mit Token in der URL: beim Abonnieren warnen, „nur auf diesem Gerät“ anbieten
+- [ ] FFI-Schicht (`torrocast-ffi`, UniFFI) und native Oberflächen
+
+## Noch von niemandem mit eigenen Augen oder Ohren geprüft
+
+- **Ton:** Alle Wiedergabetests liefen stumm. Wie der Zeitstrecker bei 1,5× bis 3× klingt, hat noch niemand gehört.
+- **Cover als echtes Bild** (Sixel in foot, Kitty-Grafik): nur die Halbblock-Variante wurde gesehen.
+- **Podcast Index mit echtem Schlüssel:** nur die Ablehnung eines falschen ist gegen den Dienst geprüft.
+- **macOS und Windows:** Die Tests laufen dort in der CI; bedient hat die TUI dort noch niemand.

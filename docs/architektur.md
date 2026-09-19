@@ -1,5 +1,8 @@
 # Architektur
 
+> **Stand 19.09.2026:** Der hier beschriebene Aufbau ist umgesetzt, bis auf die FFI-Schicht und die nativen
+> Oberflächen. Was gebaut ist und was offen bleibt, steht in [offen.md](offen.md).
+
 Zusammenfassung der Entscheidungen aus der Recherche. Begründungen und Quellen stehen
 in den verlinkten Dokumenten unter [`research/`](research/).
 
@@ -61,23 +64,24 @@ Betriebssysteme.
 ```
 TorroCast/
 ├── Cargo.toml                  # [workspace], gemeinsame Versionen
-├── crates/
-│   ├── torrocast-core/         # Fassade: Command/Event-API, Domänentypen; keine UI-, keine FFI-Abhängigkeit
-│   ├── torrocast-directory/    # DirectoryProvider-Trait; Apple, Podcast Index, fyyd; Zusammenführung
-│   ├── torrocast-feed/         # RSS + podcast:-Namespace, OPML, Kapitel (PSC, JSON, ID3, MP4), Shownotes
-│   ├── torrocast-store/        # lokales SQLite: Cache und materialisierte Sicht
-│   ├── torrocast-library/      # Bibliotheks-Ordner: Events, HLC, Merge, Journale (reine Logik + Dateischicht)
-│   ├── torrocast-player/       # ab v0.2: Decoder-Pipeline, Streaming, Stretcher; Player-Trait
-│   ├── torrocast-media/        # ab v0.2: Medientasten/MPRIS, plattformspezifisches Threading gekapselt
-│   ├── torrocast-tui/          # ratatui-App (Binary `torrocast`)
-│   └── torrocast-ffi/          # später: UniFFI-Schicht über torrocast-core
-└── apps/
-    ├── macos/                  # später
-    └── windows/                # später
+└── crates/
+    ├── torrocast-net/          # HTTP hinter einem Trait, den Tests ersetzen
+    ├── torrocast-directory/    # DirectoryProvider-Trait; Apple, Podcast Index, fyyd; Zusammenführung
+    ├── torrocast-feed/         # RSS + podcast:-Namespace, Kapitel (Podlove, JSON, ID3), Shownotes
+    ├── torrocast-library/      # Bibliotheks-Ordner: Journale pro Gerät, HLC, Merge, Schnappschüsse
+    ├── torrocast-player/       # Streaming, Decoder (symphonia), Zeitstrecker (WSOLA), Ausgabe (cpal)
+    ├── torrocast-media/        # Medientasten des Desktops; MPRIS unter Linux
+    ├── torrocast-core/         # Fassade: Commands rein, Events raus; Wiedergabe, „Als Nächstes“, Downloads
+    └── torrocast-tui/          # ratatui-App (Binary `torrocast`)
 ```
 
-`torrocast-core` stellt eine asynchrone Command/Event-Schnittstelle bereit, die TUI und
-FFI identisch nutzen. Ein späterer Daemon-Modus (TUI und GUI an derselben
+Noch nicht vorhanden: `torrocast-ffi` (UniFFI-Schicht über `torrocast-core`) und `apps/` für die
+nativen Oberflächen. Ein lokales SQLite (`torrocast-store`) hat sich bisher erübrigt: Feeds werden
+pro Sitzung im Speicher gehalten, alles Dauerhafte liegt im Bibliotheks-Ordner, Downloads und
+Cover in eigenen Ordnern.
+
+`torrocast-core` stellt eine Command/Event-Schnittstelle bereit (Worker-Threads und Kanäle, kein
+async-Runtime), die TUI und FFI identisch nutzen. Ein späterer Daemon-Modus (TUI und GUI an derselben
 Wiedergabe-Instanz) bleibt damit eine reine Ergänzung.
 
 ## Podcast-Verzeichnisse
@@ -149,22 +153,29 @@ Cover, Datenbank, Logs, Zugangsdaten (OS-Schlüsselbund).
 Server-Sync (gpodder-kompatibel: oPodSync, Nextcloud) kommt später als zweites
 Backend hinter demselben `SyncBackend`-Trait.
 
-## Wiedergabe (ab v0.2)
+## Wiedergabe
 
-Hinter einem `Player`-Trait. Empfehlung: eigene Pipeline aus symphonia (Decoder),
-stream-download (HTTP mit Seek), SoundTouch (Geschwindigkeit mit Tonhöhenkorrektur)
-und cpal (Ausgabe). Ein optionales mpv-Backend deckt Sonderfälle wie HE-AAC ab.
-Ein Spike zu Beginn von v0.2 klärt die offenen Punkte (siehe research/03, Abschnitt 7).
+**Umgesetzt als eigene Pipeline**, ohne mpv: symphonia dekodiert (MP3, AAC, Vorbis, FLAC; Opus
+über libopus als Feature), eine eigene Streaming-Quelle lädt in eine temporäre Datei und bedient
+weite Sprünge per Teilabruf, ein eigener WSOLA-Zeitstrecker in reinem Rust ändert das Tempo bei
+gleicher Tonhöhe, cpal gibt aus. Abweichungen von der Empfehlung der Recherche:
 
-## Offene Entscheidungen
+- Kein SoundTouch (LGPL, C++): der eigene Zeitstrecker hat keine Abhängigkeit und keine Lizenzfrage.
+- Kein `stream-download`-Crate (braucht ein async-Runtime): die eigene Quelle ist rund 200 Zeilen.
+- Pegelwerte für die Anzeige fallen in der Pipeline nebenbei ab.
 
-| # | Frage | Empfehlung |
+HE-AAC fehlt weiterhin; das gäbe es nur über die patentbehaftete FDK-Bibliothek.
+
+## Entscheidungen
+
+| # | Frage | Stand |
 |---|---|---|
-| 1 | ~~Podcast-Index-Key~~ | **Entschieden:** kein Key im Projekt, der Nutzer trägt seinen eigenen ein. |
-| 2 | Wiedergabe: eigene Rust-Pipeline oder mpv? | Eigene Pipeline, mpv optional. Entscheidung nach Spike. |
-| 3 | Widersprüchliche Positionen zweier Geräte: jüngste gewinnt oder weiteste gewinnt? | Jüngste gewinnt; die App bietet den Sprung zur weiteren Position an. |
-| 4 | OPML-Export im Bibliotheks-Ordner: pro Gerät oder eine gemeinsame Datei? | Pro Gerät (konfliktfrei). |
-| 5 | Private Feeds mit Token in der URL: im Klartext in den Ordner? | Beim Abonnieren warnen und „nur auf diesem Gerät“ anbieten. |
-| 6 | macOS-Pfade: XDG oder `~/Library/Application Support`? TUI und native App müssen identisch sein. | `Application Support`, damit die spätere native App ohne Umzug passt. |
-| 7 | Verschlüsselung des Bibliotheks-Ordners? | v1 ohne; Platz im Format reserviert. |
-| 8 | Lizenz und Sichtbarkeit des Repos. | Wie TorroMail: `MIT OR Apache-2.0`. Vorsicht bei SoundTouch (LGPL) – dynamisch linken oder Alternative. |
+| 1 | Podcast-Index-Key | **Entschieden:** kein Key im Projekt, der Nutzer trägt seinen eigenen ein. Umgesetzt. |
+| 2 | Wiedergabe: eigene Pipeline oder mpv? | **Umgesetzt:** eigene Pipeline, siehe oben. |
+| 3 | Widersprüchliche Positionen zweier Geräte | Umgesetzt: die jüngste gewinnt. Das Angebot „auf dem anderen Gerät warst du weiter“ fehlt noch. |
+| 4 | OPML-Export im Bibliotheks-Ordner | Offen – OPML-Import und -Export fehlen noch ganz. |
+| 5 | Private Feeds mit Token in der URL | Offen: Sie landen derzeit im Klartext im Ordner. |
+| 6 | macOS-Pfade | Umgesetzt: `~/Library/Application Support/TorroCast`. |
+| 7 | Verschlüsselung des Bibliotheks-Ordners | Nicht umgesetzt, wie empfohlen. |
+| 8 | Lizenz und Sichtbarkeit des Repos | Code steht unter `MIT OR Apache-2.0`; das Repo ist privat. **Deine Entscheidung steht aus.** |
+| 9 | Verhalten bei Stopp (`x`) | Umgesetzt als „Stelle merken, Player schließen“. **Von dir noch nicht bestätigt.** |

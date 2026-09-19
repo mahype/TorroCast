@@ -1,5 +1,15 @@
 # Oberfläche
 
+> **Stand 19.09.2026:** Der Entwurf ist umgesetzt. Abweichungen der gebauten TUI von den Mockups:
+>
+> - Das Menü hat acht Einträge: Entdecken, Abos, Neue Folgen, Als Nächstes, Playlists, Downloads,
+>   Einstellungen, Hilfe (`1`–`8`).
+> - Die Einstellungen sind eine Seite ohne Reiter: Quellen, Land, Bibliotheks-Ordner, Cover.
+> - Der Schlaf-Timer liegt auf `t`, Downloads auf `D`, „in Playlist legen“ auf `L`, Abonnieren auf `s`,
+>   die Folgensuche auf `e` (im Suchfeld `ctrl+e`).
+> - Der Fortschrittsbalken im kleinen Player zeigt keine Kapitelgrenzen (zu eng), der im großen schon.
+> - Alle Tasten stehen in der App unter `?`.
+
 Entwurf für die TUI. Ausgangspunkt sind die TorroMail-TUI (`crates/torromail-tui`) und
 die Designsprache der Torro-Apps (`torro-design/app-design.md`). TorroCast soll als
 Mitglied derselben Familie erkennbar sein: gleicher Rahmen, gleiche Farben, gleiche

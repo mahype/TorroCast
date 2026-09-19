@@ -1,5 +1,9 @@
 # Funktionssammlung
 
+> **Stand 19.09.2026:** v0.1 und v0.2 sind umgesetzt, dazu aus „Später“: mehrere Playlists, Schlaf-Timer,
+> Cover, Medientasten (Linux), Podcast Index. Die genaue Liste des Erledigten und Offenen: [offen.md](offen.md).
+> Aus v0.2 fehlen noch **OPML-Import und -Export** und die Episodenzustände „archiviert“ und „Favorit“.
+
 Abgeleitet aus der Auswertung bestehender Clients
 ([research/02](research/02-clients-und-funktionsumfang.md)). Jede Funktion ist einer
 Schicht zugeordnet: **Core** (plattformunabhängige Bibliothek) oder **UI**
