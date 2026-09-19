@@ -11,6 +11,8 @@ use ratatui_image::protocol::Protocol;
 use ratatui_image::{FilterType, Resize};
 
 /// Cells a cover takes beside a podcast's description, and in the large player.
+/// In a list, before each episode: two rows high, as the entry is.
+pub const TINY: Size = Size { width: 4, height: 2 };
 pub const SMALL: Size = Size { width: 12, height: 6 };
 pub const LARGE: Size = Size { width: 18, height: 9 };
 
@@ -64,6 +66,7 @@ pub fn picker_for(
 }
 
 pub struct Cover {
+    pub tiny: Protocol,
     pub small: Protocol,
     pub large: Protocol,
 }
@@ -110,9 +113,15 @@ impl Covers {
         // Feeds carry covers of 3000 pixels and more; a terminal cell grid has no use for them.
         let picture = picture.thumbnail(480, 480);
         let fitted = |size| picker.new_protocol(picture.clone(), size, Resize::Fit(Some(FilterType::Triangle))).ok();
-        if let (Some(small), Some(large)) = (fitted(SMALL), fitted(LARGE)) {
-            self.known.insert(url.to_owned(), Some(Cover { small, large }));
+        if let (Some(tiny), Some(small), Some(large)) = (fitted(TINY), fitted(SMALL), fitted(LARGE)) {
+            self.known.insert(url.to_owned(), Some(Cover { tiny, small, large }));
         }
+    }
+
+    /// Whether pictures are shown at all — lists leave room for them only then.
+    #[must_use]
+    pub fn enabled(&self) -> bool {
+        self.picker.is_some()
     }
 
     #[must_use]

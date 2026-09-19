@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 use torrocast_core::PodcastRef;
 
-use super::{empty, field, is_wide, panel, tab_lines};
+use super::{EpisodeRow, empty, episode_rows, field, is_wide, panel, tab_lines};
 use crate::app::{App, Load, Tab};
 use crate::text::{date, fit, window, wrap};
 use crate::theme;
@@ -209,29 +209,20 @@ fn draw_found_episodes(frame: &mut Frame<'_>, area: Rect, app: &App) {
         inner.height = inner.height.saturating_sub(2);
     }
 
-    let (width, height) = (usize::from(inner.width), usize::from(inner.height));
-    let start = window(search.episode_index, search.episodes.len(), height, 3);
-    super::clickable(app, inner, start, 3, search.episodes.len());
-    let mut lines = Vec::new();
-    for (index, episode) in search.episodes.iter().enumerate().skip(start).take(height.div_ceil(3)) {
-        let chosen = index == search.episode_index;
-        let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
-        let (state, state_style) = queue_label(app, &torrocast_core::QueueItem::from_search(episode).key());
-        let title_width = width.saturating_sub(state.chars().count() + 3);
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" {}", fit(&episode.title, title_width)),
-                if chosen { theme::selected() } else { Style::new() },
-            ),
-            Span::styled(format!(" {state} "), state_style.patch(background)),
-        ]));
-        let mut facts = vec![episode.podcast.clone()];
-        facts.extend(episode.published.map(|moment| date(lang, moment)));
-        facts.extend(episode.duration_ms.map(|milliseconds| crate::text::duration((milliseconds / 1000) as u32)));
-        lines.push(Line::styled(fit(&format!(" {}", facts.join(" · ")), width), background.fg(theme::MUTED)));
-        lines.push(Line::default());
-    }
-    frame.render_widget(Paragraph::new(lines), inner);
+    let items: Vec<torrocast_core::QueueItem> =
+        search.episodes.iter().map(torrocast_core::QueueItem::from_search).collect();
+    let rows: Vec<EpisodeRow<'_>> = search
+        .episodes
+        .iter()
+        .zip(&items)
+        .map(|(episode, item)| {
+            let mut facts = vec![episode.podcast.clone()];
+            facts.extend(episode.published.map(|moment| date(lang, moment)));
+            facts.extend(episode.duration_ms.map(|milliseconds| crate::text::duration((milliseconds / 1000) as u32)));
+            EpisodeRow { item, number: None, state: queue_label(app, &item.key()), facts: facts.join(" · ") }
+        })
+        .collect();
+    episode_rows(frame, inner, app, search.episode_index, &rows);
 }
 
 /// "▶ playing" or "✓ Up Next · number 2" — where an episode stands in the queue.

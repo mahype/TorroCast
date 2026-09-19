@@ -35,7 +35,7 @@ pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merg
 pub use torrocast_feed::chapters::merge as merge_chapters;
 pub use torrocast_feed::notes::{self, Block, Document, Inline};
 pub use torrocast_feed::{Chapter, ChapterSource, Episode, Podcast};
-pub use torrocast_library::Subscription;
+pub use torrocast_library::{Progress, Subscription};
 pub use torrocast_player::OutputKind;
 
 /// Tags larger than this are cover art with chapters attached; not worth the traffic.
@@ -241,6 +241,9 @@ pub enum Event {
     Opml(OpmlOutcome),
     /// The user's playlists, by name — at the start and whenever one changes, here or on another device.
     Playlists(Vec<Playlist>),
+    /// How far every episode has been heard, by [`QueueItem::library_id`]. Sent at the start and whenever a
+    /// place is written down. The episode playing right now is ahead of this; its place is in [`Event::Playback`].
+    Progress(HashMap<String, Progress>),
     /// Every download, the newest last — whenever one starts, moves on, ends or is deleted.
     Downloads(Vec<Download>),
     /// Whether Podcast Index accepted the user's key. `Refused(401)` is a wrong key.
@@ -359,6 +362,7 @@ impl Core {
             keeper.restore(&mut core.playback);
             let _ = core.events.send(Event::Subscriptions(keeper.subscriptions()));
             let _ = core.events.send(Event::Playlists(keeper.playlists()));
+            let _ = core.events.send(Event::Progress(keeper.progress()));
         }
         core.publish();
         (core, receiver)
@@ -630,8 +634,12 @@ impl Core {
     fn keep(&mut self) {
         let notes = self.playback.take_notes();
         let heard_one = notes.iter().any(|note| note.played);
+        let noted = !notes.is_empty();
         if let Some(keeper) = &mut self.keeper {
             keeper.save_notes(notes);
+            if noted {
+                let _ = self.events.send(Event::Progress(keeper.progress()));
+            }
             // What plays is kept at the head of the stored list. Should the
             // program end without warning, the episode is still there next time.
             let stored: Vec<QueueItem> = self
@@ -799,6 +807,7 @@ impl Core {
                 keeper.restore(&mut self.playback);
                 let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
                 let _ = self.events.send(Event::Playlists(keeper.playlists()));
+                let _ = self.events.send(Event::Progress(keeper.progress()));
                 changed = true;
             }
         }
@@ -1012,7 +1021,7 @@ mod tests {
     fn next(events: &std::sync::mpsc::Receiver<Event>) -> Event {
         loop {
             match events.recv_timeout(Duration::from_secs(5)).expect("the worker answers") {
-                Event::Playback(_) | Event::Subscriptions(_) | Event::Playlists(_) => {}
+                Event::Playback(_) | Event::Subscriptions(_) | Event::Playlists(_) | Event::Progress(_) => {}
                 event => return event,
             }
         }

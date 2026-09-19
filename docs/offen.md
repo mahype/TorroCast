@@ -29,6 +29,9 @@ ist (macOS, Windows), oder einen echten Schlüssel zum Testen.
 - [ ] Private Feeds mit Token in der URL: beim Abonnieren warnen, „nur auf diesem Gerät“ anbieten
 - [ ] FFI-Schicht (`torrocast-ffi`, UniFFI) und native Oberflächen
 
+- [x] Fortschrittsbalken fester Breite und Cover vor jedem Eintrag in den Folgenlisten
+- [ ] Fortschrittsbalken auch in der Folgenliste eines Podcasts (einzeilig; dort fehlt er noch)
+
 ## Noch von niemandem mit eigenen Augen oder Ohren geprüft
 
 - **Ton:** Alle Wiedergabetests liefen stumm. Wie der Zeitstrecker bei 1,5× bis 3× klingt, hat noch niemand gehört.

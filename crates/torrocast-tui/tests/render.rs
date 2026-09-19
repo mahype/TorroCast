@@ -697,8 +697,13 @@ fn episodes_are_downloaded_played_from_disk_and_deleted() {
 /// Twelve bands, red and blue in turn. Drawn six cells high, every cell holds one of each —
 /// so every cell is a half block, which a test can see.
 fn striped_png() -> Vec<u8> {
+    banded_png(12)
+}
+
+/// `bands` horizontal bands, red and blue in turn. Drawn half as many cells high, every cell holds one of each.
+fn banded_png(bands: u32) -> Vec<u8> {
     let picture = image::RgbImage::from_fn(120, 120, |_, y| {
-        if (y / 10) % 2 == 0 { image::Rgb([200, 30, 30]) } else { image::Rgb([30, 30, 200]) }
+        if (y / (120 / bands)).is_multiple_of(2) { image::Rgb([200, 30, 30]) } else { image::Rgb([30, 30, 200]) }
     });
     let mut bytes = std::io::Cursor::new(Vec::new());
     image::DynamicImage::ImageRgb8(picture).write_to(&mut bytes, image::ImageFormat::Png).expect("encodes in memory");
@@ -874,5 +879,100 @@ fn tabs_can_be_clicked() {
     assert!(
         matches!(app.commands.pop(), Some(Command::Charts { .. })),
         "a tab opened by mouse loads like one opened by key"
+    );
+}
+
+// ── progress bars and covers in lists ────────────────────────────────────────
+
+/// The bar cells of the row that mentions `needle`: how many there are, and how many carry `colour`.
+fn bar_cells(app: &App, needle: &str, colour: ratatui::style::Color) -> (usize, usize) {
+    let mut terminal = Terminal::new(TestBackend::new(104, 30)).expect("a test backend always works");
+    terminal.draw(|frame| ui::draw(frame, app)).expect("drawing into memory");
+    let buffer = terminal.backend().buffer();
+    let row = (0..30u16)
+        .find(|y| (0..104u16).map(|x| buffer[(x, *y)].symbol()).collect::<String>().contains(needle))
+        .expect("the row is drawn");
+    // Only the content area: the small player in the menu column has a bar of its own.
+    let cells: Vec<_> = (27..104u16).map(|x| &buffer[(x, row)]).filter(|cell| cell.symbol() == "━").collect();
+    (cells.len(), cells.iter().filter(|cell| cell.fg == colour).count())
+}
+
+#[test]
+fn every_episode_shows_how_far_it_has_been_heard_in_a_bar_of_one_width() {
+    use std::collections::HashMap;
+
+    use torrocast_core::Progress;
+    use torrocast_tui::theme;
+
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    let episodes = ["Unberührt", "Halb", "Fertig", "Läuft"].map(new_episode);
+    let mut halfway = episodes[1].clone();
+    halfway.item.podcast = "Halbe Sendung".into();
+    let mut done = episodes[2].clone();
+    done.item.podcast = "Fertige Sendung".into();
+    let mut untouched = episodes[0].clone();
+    untouched.item.podcast = "Neue Sendung".into();
+    let mut running = episodes[3].clone();
+    running.item.podcast = "Laufende Sendung".into();
+    app.on_event(Event::NewEpisodes {
+        episodes: vec![untouched, halfway.clone(), done.clone(), running.clone()],
+        pending: 0,
+        failed: 0,
+    });
+    app.on_event(Event::Progress(HashMap::from([
+        (halfway.item.library_id(), Progress { position_ms: 1_800_000, duration_ms: Some(3_600_000), played: false }),
+        (done.item.library_id(), Progress { position_ms: 0, duration_ms: None, played: true }),
+    ])));
+    // What plays right now is further than anything written down: three quarters through.
+    app.on_event(Event::Playback(Box::new(PlaybackState {
+        now: Some(NowPlaying {
+            item: running.item.clone(),
+            status: Status::Playing,
+            position_ms: 2_700_000,
+            duration_ms: Some(3_600_000),
+        }),
+        up_next: Vec::new(),
+        speed: 1.0,
+        sleep: None,
+    })));
+    press(&mut app, KeyCode::Char('3'));
+
+    assert_eq!(bar_cells(&app, "Neue Sendung", theme::ACCENT), (10, 0), "nothing heard: an empty bar, but a bar");
+    assert_eq!(bar_cells(&app, "Halbe Sendung", theme::ACCENT), (10, 5));
+    assert_eq!(bar_cells(&app, "Fertige Sendung", theme::GREEN), (10, 10), "heard to the end: full, and green");
+    assert_eq!(bar_cells(&app, "Laufende Sendung", theme::ACCENT), (10, 8), "the playing episode follows the player");
+}
+
+#[test]
+fn lists_show_the_cover_before_each_episode() {
+    use torrocast_tui::covers::Covers;
+
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    app.covers = Covers::new(Some(ratatui_image::picker::Picker::halfblocks()));
+    let mut episode = new_episode("Mit Bild");
+    episode.item.artwork_url = Some("https://img.example/cover.png".into());
+    app.on_event(Event::NewEpisodes { episodes: vec![episode, new_episode("Ohne Bild")], pending: 0, failed: 0 });
+    assert_eq!(
+        app.commands.pop(),
+        Some(Command::Cover { url: "https://img.example/cover.png".into() }),
+        "a list asks for its covers"
+    );
+    app.on_event(Event::Cover { url: "https://img.example/cover.png".into(), bytes: Some(Arc::new(banded_png(4))) });
+    press(&mut app, KeyCode::Char('3'));
+
+    let text = screen(&app, 104, 28);
+    let with = text.lines().find(|line| line.contains("Mit Bild")).expect("drawn");
+    let without = text.lines().find(|line| line.contains("Ohne Bild")).expect("drawn");
+    assert!(with.contains('▀'), "the cover stands before the title: {with}");
+    assert!(!without.contains('▀'));
+    let column = |line: &str, word: &str| {
+        line.chars().position(|_| false).unwrap_or_else(|| line.find(word).map_or(0, |at| line[..at].chars().count()))
+    };
+    assert_eq!(
+        column(with, "Mit Bild"),
+        column(without, "Ohne Bild"),
+        "titles line up whether or not there is a picture"
     );
 }

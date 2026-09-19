@@ -2,7 +2,7 @@
 //! fetches: it queues [`Command`]s for the core and is told the [`Event`]s.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -11,7 +11,7 @@ use ratatui::layout::{Position, Rect};
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
     Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode, OpmlOutcome,
-    PlaybackState, Playlist, PlaylistCommand, Podcast, PodcastRef, Problem, ProviderId, QueueItem, Settings,
+    PlaybackState, Playlist, PlaylistCommand, Podcast, PodcastRef, Problem, Progress, ProviderId, QueueItem, Settings,
     Subscription, Transport, merge, merge_chapters, notes,
 };
 
@@ -284,6 +284,8 @@ pub struct App {
     pub subscriptions: Vec<Subscription>,
     pub subscriptions_index: usize,
     pub covers: Covers,
+    /// How far episodes have been heard, by library id; the playing one is ahead of this.
+    pub progress: HashMap<String, Progress>,
     /// What the last frame drew that can be clicked.
     pub hits: RefCell<Vec<Hit>>,
     pub playlists: Vec<Playlist>,
@@ -373,6 +375,7 @@ impl App {
             subscriptions: Vec::new(),
             subscriptions_index: 0,
             covers: Covers::default(),
+            progress: HashMap::new(),
             hits: RefCell::new(Vec::new()),
             playlists: Vec::new(),
             playlists_index: 0,
@@ -516,6 +519,8 @@ impl App {
             }
             Event::EpisodeResults { request, outcome } if request == self.search.request => match outcome {
                 Ok(episodes) => {
+                    let found: Vec<QueueItem> = episodes.iter().map(QueueItem::from_search).collect();
+                    self.want_covers_of(found.iter());
                     self.search.episodes = episodes;
                     self.search.episodes_load = Load::Ready;
                 }
@@ -529,10 +534,12 @@ impl App {
                 let artwork = state.now.as_ref().and_then(|now| now.item.artwork_url.clone());
                 self.want_cover(artwork.as_deref());
                 self.up_next_index = self.up_next_index.min(state.up_next.len().saturating_sub(1));
+                self.want_covers_of(state.up_next.iter());
                 self.playback = *state;
             }
             Event::NewEpisodes { episodes, pending, failed } => {
                 self.new_index = self.new_index.min(episodes.len().saturating_sub(1));
+                self.want_covers_of(episodes.iter().map(|episode| &episode.item));
                 self.new_episodes = episodes;
                 (self.refresh_pending, self.refresh_failed) = (pending, failed);
             }
@@ -553,6 +560,7 @@ impl App {
                     self.covers.arrived(&url, &bytes);
                 }
             }
+            Event::Progress(progress) => self.progress = progress,
             Event::Opml(outcome) => {
                 self.notice = Some(match (self.lang, outcome) {
                     (Lang::De, OpmlOutcome::Imported { new, known }) => {
@@ -574,6 +582,7 @@ impl App {
             }
             Event::Playlists(playlists) => {
                 self.playlists_index = self.playlists_index.min(playlists.len().saturating_sub(1));
+                self.want_covers_of(playlists.iter().flat_map(|playlist| playlist.items.iter()));
                 if self.open_playlist.as_ref().is_some_and(|open| playlists.iter().all(|playlist| playlist.id != *open))
                 {
                     self.open_playlist = None;
@@ -584,6 +593,7 @@ impl App {
             }
             Event::Downloads(downloads) => {
                 self.downloads_index = self.downloads_index.min(downloads.len().saturating_sub(1));
+                self.want_covers_of(downloads.iter().map(|download| &download.item));
                 self.downloads = downloads;
             }
             Event::Subscriptions(subscriptions) => {
@@ -704,6 +714,32 @@ impl App {
             return self.search.episodes.get(self.search.episode_index).map(QueueItem::from_search);
         }
         None
+    }
+
+    /// How much of an episode has been heard, from 0 to 1.
+    #[must_use]
+    pub fn heard(&self, item: &QueueItem) -> f32 {
+        let fraction = |position_ms: u64, duration_ms: Option<u64>| match duration_ms.or(item.duration_ms) {
+            Some(duration) if duration > 0 => (position_ms as f32 / duration as f32).clamp(0.0, 1.0),
+            _ => 0.0,
+        };
+        // What plays right now is further than the last place written down.
+        if let Some(now) = self.playback.now.as_ref().filter(|now| now.item.key() == item.key()) {
+            return fraction(now.position_ms, now.duration_ms);
+        }
+        match self.progress.get(&item.library_id()) {
+            Some(progress) if progress.played => 1.0,
+            Some(progress) => fraction(progress.position_ms, progress.duration_ms),
+            None => 0.0,
+        }
+    }
+
+    /// Asks for the pictures of a list's episodes. Lists can be long; the first screenfuls are enough.
+    fn want_covers_of<'a>(&mut self, items: impl Iterator<Item = &'a QueueItem>) {
+        let urls: Vec<String> = items.take(60).filter_map(|item| item.artwork_url.clone()).collect();
+        for url in urls {
+            self.want_cover(Some(&url));
+        }
     }
 
     /// Asks for a picture, unless covers are off, it is known, or there is none.

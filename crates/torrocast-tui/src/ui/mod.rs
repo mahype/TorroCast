@@ -20,7 +20,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
 
 use crate::app::{App, Hit, HitTarget, MENU_WIDTH, MIN_HEIGHT, MIN_WIDTH, Section, Tab};
-use crate::text::fit;
+use crate::text::{self, fit};
 use crate::theme;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -297,6 +297,82 @@ fn hint_line(app: &App, hints: &[(&'static str, &'static str)]) -> Line<'static>
         spans.push(Span::styled(format!(" {}  ", app.lang.t(label)), theme::muted()));
     }
     Line::from(spans)
+}
+
+/// One episode in a list that is not its podcast's own: title and state above,
+/// how far it has been heard and where it is from below.
+pub(crate) struct EpisodeRow<'a> {
+    pub item: &'a torrocast_core::QueueItem,
+    /// Its place in a numbered list, from 1.
+    pub number: Option<usize>,
+    /// What stands at the right of the first line, and how it is coloured.
+    pub state: (String, Style),
+    /// What follows the progress bar on the second line.
+    pub facts: String,
+}
+
+/// Columns of the progress bar. Always the same, so the second lines of a list line up.
+const BAR: usize = 10;
+
+/// How far an episode has been heard, as a bar of fixed width: accent while under way, green when done.
+fn heard_bar(fraction: f32, background: Style) -> Vec<Span<'static>> {
+    let filled = if fraction >= 0.995 { BAR } else { ((fraction * BAR as f32).round() as usize).min(BAR - 1) };
+    // The first cell fills as soon as anything has been heard at all.
+    let filled = if fraction > 0.0 { filled.max(1) } else { 0 };
+    let colour = if filled == BAR { theme::GREEN } else { theme::ACCENT };
+    vec![
+        Span::styled("━".repeat(filled), background.fg(colour)),
+        Span::styled("━".repeat(BAR - filled), background.fg(theme::LINE)),
+    ]
+}
+
+/// Draws episodes three rows apiece — cover, title and state, bar and facts —
+/// keeps the chosen one in view, and notes the rows for the mouse.
+pub(crate) fn episode_rows(frame: &mut Frame<'_>, inner: Rect, app: &App, chosen: usize, rows: &[EpisodeRow<'_>]) {
+    let (width, height) = (usize::from(inner.width), usize::from(inner.height));
+    let start = text::window(chosen, rows.len(), height, 3);
+    clickable(app, inner, start, 3, rows.len());
+    // With pictures on, every entry leaves the same room for one — also an episode that has none.
+    let pictures = app.settings.covers && app.covers.enabled();
+    let room = if pictures { usize::from(crate::covers::TINY.width) + 1 } else { 0 };
+
+    let mut lines = Vec::new();
+    for (index, row) in rows.iter().enumerate().skip(start).take(height.div_ceil(3)) {
+        let is_chosen = index == chosen;
+        let background = if is_chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
+        let lead = " ".repeat(room);
+        let number = row.number.map(|number| format!("{number:<3}")).unwrap_or_default();
+        let state = &row.state.0;
+        let title_width = width.saturating_sub(room + 1 + number.chars().count() + state.chars().count() + 2);
+        lines.push(Line::from(vec![
+            Span::styled(format!("{lead} "), background),
+            Span::styled(number.clone(), background.fg(theme::FAINT)),
+            Span::styled(fit(&row.item.title, title_width), if is_chosen { theme::selected() } else { Style::new() }),
+            Span::styled(format!(" {state} "), row.state.1.patch(background)),
+        ]));
+        let mut second = vec![Span::styled(format!("{lead} {}", " ".repeat(number.chars().count())), background)];
+        second.extend(heard_bar(app.heard(row.item), background));
+        let facts_width = width.saturating_sub(room + 1 + number.chars().count() + BAR);
+        second.push(Span::styled(fit(&format!("  {}", row.facts), facts_width), background.fg(theme::MUTED)));
+        lines.push(Line::from(second));
+        lines.push(Line::default());
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
+
+    if !pictures {
+        return;
+    }
+    for (slot, row) in rows.iter().skip(start).take(height.div_ceil(3)).enumerate() {
+        let top = inner.y + (slot * 3) as u16;
+        let size = crate::covers::TINY;
+        if top + size.height > inner.y + inner.height {
+            break;
+        }
+        if let Some(cover) = app.covers.get(row.item.artwork_url.as_deref()) {
+            let place = Rect { x: inner.x, y: top, width: size.width, height: size.height };
+            frame.render_widget(ratatui_image::Image::new(&cover.tiny), place);
+        }
+    }
 }
 
 /// Notes that `area` holds the rows of a list, `first` being the entry in its top row.

@@ -140,6 +140,12 @@ impl Keeper {
         let _ = self.folder.record(change, now_ms());
     }
 
+    /// How far every episode has been heard, by [`QueueItem::library_id`] — on this device or any other.
+    #[must_use]
+    pub fn progress(&self) -> HashMap<String, torrocast_library::Progress> {
+        self.folder.state().all_progress()
+    }
+
     /// Heard to the end, on this device or any other.
     #[must_use]
     pub fn is_played(&self, item: &QueueItem) -> bool {

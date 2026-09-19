@@ -205,6 +205,12 @@ impl State {
         playlists
     }
 
+    /// Where every episode was left, by episode id.
+    #[must_use]
+    pub fn all_progress(&self) -> HashMap<String, Progress> {
+        self.progress.iter().map(|(episode, register)| (episode.clone(), register.value)).collect()
+    }
+
     /// A playlist in its order, each entry with its episode id and sort value.
     #[must_use]
     pub fn playlist(&self, playlist: &str) -> Vec<(String, f64, StoredItem)> {

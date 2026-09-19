@@ -8,6 +8,9 @@
 > - Der Schlaf-Timer liegt auf `t`, Downloads auf `D`, „in Playlist legen“ auf `L`, Abonnieren auf `s`,
 >   die Folgensuche auf `e` (im Suchfeld `ctrl+e`).
 > - Der Fortschrittsbalken im kleinen Player zeigt keine Kapitelgrenzen (zu eng), der im großen schon.
+> - Folgenlisten außerhalb eines Podcasts (Neue Folgen, Als Nächstes, Playlists, Downloads, Folgensuche) zeigen
+>   vor jedem Eintrag das Cover und in der zweiten Zeile einen Balken fester Breite: wie weit die Folge gehört ist.
+>   Rot heißt angefangen, grün heißt gehört.
 > - Alle Tasten stehen in der App unter `?`.
 
 Entwurf für die TUI. Ausgangspunkt sind die TorroMail-TUI (`crates/torromail-tui`) und

@@ -7,7 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Clear, Paragraph};
 
 use super::discover::queue_label;
-use super::{empty, panel};
+use super::{EpisodeRow, empty, episode_rows, panel};
 use crate::app::App;
 use crate::text::{duration, fit, window};
 use crate::theme;
@@ -58,29 +58,18 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
         empty(frame, inner, &[lang.t("This playlist is empty. L on any episode puts it here.")]);
         return;
     }
-    let (width, height) = (usize::from(inner.width), usize::from(inner.height));
-    let start = window(app.playlist_item, playlist.items.len(), height, 3);
-    super::clickable(app, inner, start, 3, playlist.items.len());
-    let mut lines = Vec::new();
-    for (index, item) in playlist.items.iter().enumerate().skip(start).take(height.div_ceil(3)) {
-        let chosen = index == app.playlist_item;
-        let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
-        let (state, state_style) = match queue_label(app, &item.key()) {
-            (label, style) if !label.is_empty() => (label, style),
-            _ => (item.duration_ms.map(clock).unwrap_or_default(), theme::muted()),
-        };
-        let title_width = width.saturating_sub(state.chars().count() + 3);
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" {}", fit(&item.title, title_width)),
-                if chosen { theme::selected() } else { Style::new() },
-            ),
-            Span::styled(format!(" {state} "), state_style.patch(background)),
-        ]));
-        lines.push(Line::styled(fit(&format!(" {}", item.podcast), width), background.fg(theme::MUTED)));
-        lines.push(Line::default());
-    }
-    frame.render_widget(Paragraph::new(lines), inner);
+    let rows: Vec<EpisodeRow<'_>> = playlist
+        .items
+        .iter()
+        .map(|item| {
+            let state = match queue_label(app, &item.key()) {
+                (label, style) if !label.is_empty() => (label, style),
+                _ => (item.duration_ms.map(clock).unwrap_or_default(), theme::muted()),
+            };
+            EpisodeRow { item, number: None, state, facts: item.podcast.clone() }
+        })
+        .collect();
+    episode_rows(frame, inner, app, app.playlist_item, &rows);
 }
 
 fn draw_list(frame: &mut Frame<'_>, area: Rect, app: &App) {

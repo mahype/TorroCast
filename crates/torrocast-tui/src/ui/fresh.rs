@@ -7,9 +7,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::discover::queue_label;
-use super::{empty, panel};
+use super::{EpisodeRow, empty, episode_rows, panel};
 use crate::app::App;
-use crate::text::{date, duration, fit, window};
+use crate::text::{date, duration};
 use crate::theme;
 
 pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
@@ -51,26 +51,18 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
         inner.height = inner.height.saturating_sub(2);
     }
 
-    let (width, height) = (usize::from(inner.width), usize::from(inner.height));
-    let start = window(app.new_index, episodes.len(), height, 3);
-    super::clickable(app, inner, start, 3, episodes.len());
-    let mut lines = Vec::new();
-    for (index, episode) in episodes.iter().enumerate().skip(start).take(height.div_ceil(3)) {
-        let chosen = index == app.new_index;
-        let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
-        let (state, state_style) = queue_label(app, &episode.item.key());
-        let title_width = width.saturating_sub(state.chars().count() + 3);
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" {}", fit(&episode.item.title, title_width)),
-                if chosen { theme::selected() } else { Style::new() },
-            ),
-            Span::styled(format!(" {state} "), state_style.patch(background)),
-        ]));
-        let mut facts = vec![episode.item.podcast.clone(), date(lang, episode.published)];
-        facts.extend(episode.item.duration_ms.map(|milliseconds| duration((milliseconds / 1000) as u32)));
-        lines.push(Line::styled(fit(&format!(" {}", facts.join(" · ")), width), background.fg(theme::MUTED)));
-        lines.push(Line::default());
-    }
-    frame.render_widget(Paragraph::new(lines), inner);
+    let rows: Vec<EpisodeRow<'_>> = episodes
+        .iter()
+        .map(|episode| {
+            let mut facts = vec![episode.item.podcast.clone(), date(lang, episode.published)];
+            facts.extend(episode.item.duration_ms.map(|milliseconds| duration((milliseconds / 1000) as u32)));
+            EpisodeRow {
+                item: &episode.item,
+                number: None,
+                state: queue_label(app, &episode.item.key()),
+                facts: facts.join(" · "),
+            }
+        })
+        .collect();
+    episode_rows(frame, inner, app, app.new_index, &rows);
 }

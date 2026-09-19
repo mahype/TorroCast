@@ -6,9 +6,9 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::{empty, panel};
+use super::{EpisodeRow, empty, episode_rows, panel};
 use crate::app::App;
-use crate::text::{duration, fit, window};
+use crate::text::{duration, fit};
 use crate::theme;
 
 fn clock(milliseconds: u64) -> String {
@@ -74,22 +74,15 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
         inner.height = inner.height.saturating_sub(2);
     }
 
-    let (width, height) = (usize::from(inner.width), usize::from(inner.height));
-    let start = window(app.up_next_index, queue.len(), height, 3);
-    super::clickable(app, inner, start, 3, queue.len());
-    let mut lines = Vec::new();
-    for (index, item) in queue.iter().enumerate().skip(start).take(height.div_ceil(3)) {
-        let chosen = index == app.up_next_index;
-        let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
-        let length = item.duration_ms.map(clock).unwrap_or_default();
-        let title_width = width.saturating_sub(length.chars().count() + 8);
-        lines.push(Line::from(vec![
-            Span::styled(format!(" {:<3} ", index + 1), background.fg(theme::FAINT)),
-            Span::styled(fit(&item.title, title_width), if chosen { theme::selected() } else { Style::new() }),
-            Span::styled(format!(" {length}  "), background.fg(theme::MUTED)),
-        ]));
-        lines.push(Line::styled(fit(&format!("     {}", item.podcast), width), background.fg(theme::MUTED)));
-        lines.push(Line::default());
-    }
-    frame.render_widget(Paragraph::new(lines), inner);
+    let rows: Vec<EpisodeRow<'_>> = queue
+        .iter()
+        .enumerate()
+        .map(|(index, item)| EpisodeRow {
+            item,
+            number: Some(index + 1),
+            state: (item.duration_ms.map(clock).unwrap_or_default(), theme::muted()),
+            facts: item.podcast.clone(),
+        })
+        .collect();
+    episode_rows(frame, inner, app, app.up_next_index, &rows);
 }
