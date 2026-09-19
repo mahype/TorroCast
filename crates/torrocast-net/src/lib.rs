@@ -43,6 +43,13 @@ pub trait Fetch: Send + Sync {
     /// The whole body of `url`.
     fn get(&self, url: &str) -> Result<Vec<u8>, FetchError>;
 
+    /// The whole body of `url`, asked for with extra headers — for directories that want a key.
+    /// Stand-ins for tests need not care about the headers.
+    fn get_with(&self, url: &str, headers: &[(&str, String)]) -> Result<Vec<u8>, FetchError> {
+        let _ = headers;
+        self.get(url)
+    }
+
     /// Bytes `start..=end` of `url`. Used to read a tag at the head of an
     /// audio file without downloading the episode.
     fn get_range(&self, url: &str, start: u64, end: u64) -> Result<Vec<u8>, FetchError>;
@@ -95,6 +102,14 @@ impl Fetch for HttpClient {
     fn get(&self, url: &str) -> Result<Vec<u8>, FetchError> {
         let response = self.agent.get(url).call().map_err(translate)?;
         Self::read(response, MAX_BODY)
+    }
+
+    fn get_with(&self, url: &str, headers: &[(&str, String)]) -> Result<Vec<u8>, FetchError> {
+        let mut request = self.agent.get(url);
+        for (name, value) in headers {
+            request = request.set(name, value);
+        }
+        Self::read(request.call().map_err(translate)?, MAX_BODY)
     }
 
     fn get_range(&self, url: &str, start: u64, end: u64) -> Result<Vec<u8>, FetchError> {

@@ -24,8 +24,9 @@ following `LANG`. An address typed into the search field is opened as a feed.
 ## What it does
 
 - **Search** Apple's podcast directory for shows or, with `e`, for single episodes;
-  optionally fyyd as well (Settings). Results of several directories arrive as they come
-  and are folded into one list.
+  optionally fyyd and Podcast Index as well (Settings; Podcast Index wants your own free
+  key, TorroCast ships none). Results of several directories arrive as they come and are
+  folded into one list.
 - **Charts** by country and **categories** with their own charts.
 - **Podcast:** description, categories, website, support link, the episode list with
   date, length and marks for chapters and transcripts; filter with `/`, reverse with `o`.
@@ -53,8 +54,7 @@ following `LANG`. An address typed into the search field is opened as a feed.
   playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not yet: downloads, cover art, Podcast
-Index, Opus and HE-AAC audio.
+Not yet: downloads, cover art, Opus and HE-AAC audio.
 
 ## Layout
 

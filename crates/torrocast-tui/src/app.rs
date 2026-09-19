@@ -206,6 +206,24 @@ impl EpisodeView {
     }
 }
 
+/// A text being typed in the settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Field {
+    Library,
+    IndexKey,
+    IndexSecret,
+}
+
+/// What is known about the user's Podcast Index key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexState {
+    Unknown,
+    Checking,
+    Accepted,
+    Rejected,
+    Unreachable,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueueState {
     Playing,
@@ -238,8 +256,9 @@ pub struct App {
     pub refresh_failed: usize,
     /// Where the library lives, or why there is none. Told by the main loop.
     pub library: Result<String, String>,
-    /// The folder being typed in the settings, while it is being typed.
-    pub library_input: Option<String>,
+    /// The text being typed in the settings, and what it is for.
+    pub settings_input: Option<(Field, String)>,
+    pub index_state: IndexState,
     /// A folder the user has asked the library to move to; the main loop carries it out.
     pub library_request: Option<String>,
     pub playback: PlaybackState,
@@ -265,6 +284,9 @@ impl App {
     #[must_use]
     pub fn new(lang: Lang, settings: Settings) -> Self {
         let mut providers = vec![ProviderId::Apple];
+        if settings.sources.uses_podcast_index() {
+            providers.push(ProviderId::PodcastIndex);
+        }
         if settings.sources.fyyd {
             providers.push(ProviderId::Fyyd);
         }
@@ -304,7 +326,8 @@ impl App {
             refresh_pending: 0,
             refresh_failed: 0,
             library: Err(String::new()),
-            library_input: None,
+            settings_input: None,
+            index_state: IndexState::Unknown,
             library_request: None,
             playback: PlaybackState { speed: 1.0, ..PlaybackState::default() },
             levels: VecDeque::new(),
@@ -356,7 +379,7 @@ impl App {
     pub fn is_typing(&self) -> bool {
         match self.section {
             _ if self.player_open => false,
-            Section::Settings => self.library_input.is_some(),
+            Section::Settings => self.settings_input.is_some(),
             Section::Discover if self.episode.is_some() => false,
             Section::Discover => match &self.podcast {
                 Some(view) => view.filtering,
@@ -446,6 +469,18 @@ impl App {
                 self.new_index = self.new_index.min(episodes.len().saturating_sub(1));
                 self.new_episodes = episodes;
                 (self.refresh_pending, self.refresh_failed) = (pending, failed);
+            }
+            Event::PodcastIndexVerified(outcome) => {
+                self.index_state = match outcome {
+                    Ok(()) => IndexState::Accepted,
+                    Err(Problem::Refused(401 | 403)) => IndexState::Rejected,
+                    Err(_) => IndexState::Unreachable,
+                };
+                // A key the index refuses would only make every search complain.
+                if self.index_state == IndexState::Rejected {
+                    self.settings.sources.podcast_index = false;
+                    self.settings_changed = true;
+                }
             }
             Event::Subscriptions(subscriptions) => {
                 self.subscriptions_index = self.subscriptions_index.min(subscriptions.len().saturating_sub(1));
@@ -861,8 +896,8 @@ impl App {
 
     /// Applies `change` to whichever text field has the keyboard.
     fn edit(&mut self, change: impl FnOnce(&mut String)) {
-        if let Some(folder) = &mut self.library_input {
-            change(folder);
+        if let Some((_, text)) = &mut self.settings_input {
+            change(text);
         } else if let Some(view) = self.podcast.as_mut().filter(|view| view.filtering) {
             change(&mut view.filter);
             view.index = 0;
@@ -873,16 +908,14 @@ impl App {
     }
 
     fn on_typing_key(&mut self, code: KeyCode) {
-        if self.library_input.is_some() {
+        if self.settings_input.is_some() {
             match code {
                 KeyCode::Char(character) => self.edit(|text| text.push(character)),
                 KeyCode::Backspace => self.edit(|text| {
                     text.pop();
                 }),
-                KeyCode::Enter => {
-                    self.library_request = self.library_input.take().filter(|folder| !folder.trim().is_empty())
-                }
-                KeyCode::Esc => self.library_input = None,
+                KeyCode::Enter => self.finish_settings_input(),
+                KeyCode::Esc => self.settings_input = None,
                 _ => {}
             }
             return;
@@ -1070,8 +1103,48 @@ impl App {
             }
             (3, KeyCode::Char(' ') | KeyCode::Enter | KeyCode::Right | KeyCode::Char('l')) => self.cycle_country(1),
             (3, KeyCode::Left | KeyCode::Char('h')) => self.cycle_country(-1),
-            (4, KeyCode::Enter) => self.library_input = Some(self.library.clone().unwrap_or_default()),
+            (4, KeyCode::Enter) => {
+                self.settings_input = Some((Field::Library, self.library.clone().unwrap_or_default()))
+            }
+            // Podcast Index: without a key enter asks for one; with a key it switches, and e asks for another.
+            (1, KeyCode::Enter | KeyCode::Char(' ')) if self.has_index_key() => {
+                self.settings.sources.podcast_index = !self.settings.sources.podcast_index;
+                self.settings_changed = true;
+                if self.settings.sources.podcast_index {
+                    self.index_state = IndexState::Checking;
+                    self.commands.push(Command::VerifyPodcastIndex);
+                }
+            }
+            (1, KeyCode::Enter | KeyCode::Char('e')) => {
+                self.settings_input = Some((Field::IndexKey, self.settings.sources.podcast_index_key.clone()));
+            }
             (_, code) => move_selection(&mut self.settings_index, Self::SETTINGS_ROWS, code),
+        }
+    }
+
+    fn has_index_key(&self) -> bool {
+        let sources = &self.settings.sources;
+        !sources.podcast_index_key.is_empty() && !sources.podcast_index_secret.is_empty()
+    }
+
+    fn finish_settings_input(&mut self) {
+        let Some((field, text)) = self.settings_input.take() else { return };
+        let text = text.trim().to_owned();
+        match field {
+            Field::Library => self.library_request = Some(text).filter(|folder| !folder.is_empty()),
+            Field::IndexKey | Field::IndexSecret if text.is_empty() => {}
+            Field::IndexKey => {
+                self.settings.sources.podcast_index_key = text;
+                self.settings_input = Some((Field::IndexSecret, String::new()));
+            }
+            // Key and secret are there: switch the directory on and ask it whether it agrees.
+            Field::IndexSecret => {
+                self.settings.sources.podcast_index_secret = text;
+                self.settings.sources.podcast_index = true;
+                self.settings_changed = true;
+                self.index_state = IndexState::Checking;
+                self.commands.push(Command::VerifyPodcastIndex);
+            }
         }
     }
 

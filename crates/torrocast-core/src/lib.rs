@@ -9,7 +9,7 @@ pub mod settings;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
 use keeper::Keeper;
@@ -18,6 +18,7 @@ use torrocast_player::{Media, Player, PlayerEvent};
 
 use torrocast_directory::apple::Apple;
 use torrocast_directory::fyyd::Fyyd;
+use torrocast_directory::podcast_index::PodcastIndex;
 use torrocast_directory::{DirectoryError, DirectoryProvider};
 use torrocast_feed::chapters;
 use torrocast_net::{Fetch, FetchError};
@@ -101,6 +102,8 @@ pub enum Command {
         mp3_url: Option<String>,
     },
     Transport(Transport),
+    /// Asks Podcast Index whether it accepts the key in the settings.
+    VerifyPodcastIndex,
     /// Fetches every subscribed feed again; the list of new episodes follows as the answers come in.
     RefreshSubscriptions,
     /// Subscribes to a podcast, or ends the subscription. `guid` is the feed's `podcast:guid`, if it has one.
@@ -184,6 +187,8 @@ pub enum Event {
         pending: usize,
         failed: usize,
     },
+    /// Whether Podcast Index accepted the user's key. `Refused(401)` is a wrong key.
+    PodcastIndexVerified(Result<(), Problem>),
     /// All subscriptions, alphabetically — at the start and whenever they change, here or on another device.
     Subscriptions(Vec<Subscription>),
 }
@@ -200,7 +205,14 @@ struct Shared {
     fetch: Arc<dyn Fetch>,
     apple: Apple,
     fyyd: Fyyd,
+    /// Present while the user has switched it on and given a key.
+    podcast_index: RwLock<Option<PodcastIndex>>,
     feeds: Mutex<HashMap<String, Arc<Podcast>>>,
+}
+
+fn podcast_index(settings: &Settings) -> Option<PodcastIndex> {
+    let sources = &settings.sources;
+    sources.uses_podcast_index().then(|| PodcastIndex::new(&sources.podcast_index_key, &sources.podcast_index_secret))
 }
 
 /// Chapters found for the playing episode, by [`QueueItem::key`].
@@ -239,7 +251,13 @@ impl Core {
         keeper: Option<Keeper>,
     ) -> (Self, Receiver<Event>) {
         let (events, receiver) = channel();
-        let shared = Shared { fetch, apple: Apple::default(), fyyd: Fyyd, feeds: Mutex::new(HashMap::new()) };
+        let shared = Shared {
+            fetch,
+            apple: Apple::default(),
+            fyyd: Fyyd,
+            podcast_index: RwLock::new(podcast_index(&settings)),
+            feeds: Mutex::new(HashMap::new()),
+        };
         let core = Self {
             shared: Arc::new(shared),
             settings,
@@ -264,6 +282,9 @@ impl Core {
     }
 
     pub fn set_settings(&mut self, settings: Settings) {
+        if let Ok(mut index) = self.shared.podcast_index.write() {
+            *index = podcast_index(&settings);
+        }
         self.settings = settings;
     }
 
@@ -271,6 +292,9 @@ impl Core {
     #[must_use]
     pub fn active_providers(&self) -> Vec<ProviderId> {
         let mut providers = vec![ProviderId::Apple];
+        if self.settings.sources.uses_podcast_index() {
+            providers.push(ProviderId::PodcastIndex);
+        }
         if self.settings.sources.fyyd {
             providers.push(ProviderId::Fyyd);
         }
@@ -286,11 +310,16 @@ impl Core {
                 for provider in self.active_providers() {
                     let (query, country) = (query.clone(), country.clone());
                     self.spawn(move |shared| {
-                        let directory: &dyn DirectoryProvider = match provider {
-                            ProviderId::Apple => &shared.apple,
-                            ProviderId::Fyyd => &shared.fyyd,
-                        };
-                        let outcome = directory.search(shared.fetch.as_ref(), &query, &country).map_err(Problem::from);
+                        let fetch = shared.fetch.as_ref();
+                        let outcome = match provider {
+                            ProviderId::Apple => shared.apple.search(fetch, &query, &country),
+                            ProviderId::Fyyd => shared.fyyd.search(fetch, &query, &country),
+                            ProviderId::PodcastIndex => match shared.podcast_index.read().ok().as_deref() {
+                                Some(Some(index)) => index.search(fetch, &query, &country),
+                                _ => Err(DirectoryError::Unsupported),
+                            },
+                        }
+                        .map_err(Problem::from);
                         Event::SearchBatch { request, provider, outcome }
                     });
                 }
@@ -302,6 +331,13 @@ impl Core {
             }),
             Command::Transport(transport) => self.transport(transport),
             Command::RefreshSubscriptions => self.refresh(),
+            Command::VerifyPodcastIndex => self.spawn(|shared| {
+                let outcome = match shared.podcast_index.read().ok().as_deref() {
+                    Some(Some(index)) => index.verify(shared.fetch.as_ref()).map_err(Problem::from),
+                    _ => Err(Problem::Unreadable),
+                };
+                Event::PodcastIndexVerified(outcome)
+            }),
             Command::SetSubscribed { feed_url, title, guid, subscribed } => {
                 if let Some(keeper) = &mut self.keeper {
                     keeper.set_subscribed(keeper::podcast_id(guid.as_deref(), &feed_url), feed_url, title, subscribed);

@@ -609,3 +609,37 @@ fn new_episodes_are_listed_counted_and_queued() {
     assert_eq!(app.section, Section::NewEpisodes);
     assert!(screen(&app, 104, 28).contains("2 Feeds haben nicht geantwortet"));
 }
+
+// ── podcast index ────────────────────────────────────────────────────────────
+
+#[test]
+fn podcast_index_takes_the_users_own_key_and_checks_it() {
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('5'));
+    press(&mut app, KeyCode::Down);
+    assert!(screen(&app, 104, 30).contains("Kein Schlüssel hinterlegt"));
+
+    press(&mut app, KeyCode::Enter);
+    type_text(&mut app, " ABCDEFGH ");
+    press(&mut app, KeyCode::Enter);
+    type_text(&mut app, "s3cr3t$value");
+    let typing = screen(&app, 104, 30);
+    assert!(typing.contains("API-Secret"));
+    assert!(typing.contains("••••••••••ue") && !typing.contains("s3cr3t"), "a secret is never on the screen in full");
+    press(&mut app, KeyCode::Enter);
+
+    assert_eq!(app.settings.sources.podcast_index_key, "ABCDEFGH", "stray spaces from pasting are gone");
+    assert!(app.settings.sources.uses_podcast_index() && app.settings_changed);
+    assert_eq!(app.commands.pop(), Some(Command::VerifyPodcastIndex));
+    assert!(screen(&app, 104, 30).contains("Prüfe den Schlüssel …"));
+
+    app.on_event(Event::PodcastIndexVerified(Err(Problem::Refused(401))));
+    assert!(screen(&app, 104, 30).contains("Der Schlüssel wird nicht angenommen"));
+    assert!(!app.settings.sources.podcast_index, "a refused key is switched off, so searches do not keep failing");
+
+    press(&mut app, KeyCode::Enter);
+    assert!(app.settings.sources.podcast_index);
+    app.on_event(Event::PodcastIndexVerified(Ok(())));
+    assert!(screen(&app, 104, 30).contains("●  Podcast Index"));
+}

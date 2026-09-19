@@ -4,6 +4,7 @@
 pub mod apple;
 pub mod fyyd;
 mod merge;
+pub mod podcast_index;
 
 use std::fmt;
 
@@ -16,6 +17,7 @@ pub use merge::{merge, normalise_feed_url};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ProviderId {
     Apple,
+    PodcastIndex,
     Fyyd,
 }
 
@@ -24,6 +26,7 @@ impl ProviderId {
     pub fn name(self) -> &'static str {
         match self {
             Self::Apple => "Apple",
+            Self::PodcastIndex => "Podcast Index",
             Self::Fyyd => "fyyd",
         }
     }

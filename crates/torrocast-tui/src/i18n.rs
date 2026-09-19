@@ -275,7 +275,28 @@ const GERMAN: &[(&str, &str)] = &[
         "Open directory with trending shows. Needs your own free key.",
         "Offenes Verzeichnis mit Trending. Braucht deinen eigenen, kostenlosen Schlüssel.",
     ),
-    ("Comes with a later version", "Kommt mit einer späteren Version"),
+    ("No key stored", "Kein Schlüssel hinterlegt"),
+    ("Checking the key …", "Prüfe den Schlüssel …"),
+    ("The key is not accepted", "Der Schlüssel wird nicht angenommen"),
+    ("Not reachable", "Nicht erreichbar"),
+    (
+        "Open directory. enter switches it, e enters another key.",
+        "Offenes Verzeichnis. enter schaltet es, e nimmt einen anderen Schlüssel.",
+    ),
+    (
+        "Open directory. Needs your own free key — enter to type it in.",
+        "Offenes Verzeichnis. Braucht deinen eigenen, kostenlosen Schlüssel – enter, um ihn einzutippen.",
+    ),
+    ("Podcast Index · API key", "Podcast Index · API-Schlüssel"),
+    ("Podcast Index · API secret", "Podcast Index · API-Secret"),
+    (
+        "A key and its secret are free at api.podcastindex.org. Paste the key, then press enter; esc cancels.",
+        "Schlüssel und Secret gibt es kostenlos auf api.podcastindex.org. Füg den Schlüssel ein, dann enter; esc bricht ab.",
+    ),
+    (
+        "Paste the secret that came with the key, then press enter. It is shown masked.",
+        "Füg das Secret ein, das du zum Schlüssel bekommen hast, dann enter. Es wird maskiert angezeigt.",
+    ),
     ("Country for search and charts", "Land für Suche und Charts"),
     ("The settings could not be saved.", "Die Einstellungen konnten nicht gespeichert werden."),
     // help

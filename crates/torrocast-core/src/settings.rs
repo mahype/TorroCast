@@ -24,6 +24,18 @@ pub struct Settings {
 #[serde(default)]
 pub struct Sources {
     pub fyyd: bool,
+    pub podcast_index: bool,
+    /// The user's own key and secret from api.podcastindex.org. TorroCast ships none.
+    pub podcast_index_key: String,
+    pub podcast_index_secret: String,
+}
+
+impl Sources {
+    /// Switched on, and with what it takes to be asked.
+    #[must_use]
+    pub fn uses_podcast_index(&self) -> bool {
+        self.podcast_index && !self.podcast_index_key.trim().is_empty() && !self.podcast_index_secret.trim().is_empty()
+    }
 }
 
 impl Default for Settings {
@@ -65,6 +77,12 @@ impl Settings {
         // Written beside the target and renamed, so a crash never leaves half a file.
         let temporary = file.with_extension("toml.tmp");
         std::fs::write(&temporary, text)?;
+        // The file may hold a directory key: for the user's eyes only.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o600))?;
+        }
         std::fs::rename(temporary, file)
     }
 }
