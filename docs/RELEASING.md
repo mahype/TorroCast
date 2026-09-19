@@ -44,14 +44,42 @@ die fertige Datei einmal mit `--version` und vergleicht die Antwort mit der erwa
 ## macOS: signieren und notarisieren
 
 Ohne Apple-Secrets wird die Datei nur ad hoc signiert. Sie läuft, aber Gatekeeper hält einen
-Browser-Download zurück, bis `xattr -d com.apple.quarantine torrocast` die Sperre löst.
-(Ein Download mit `curl` oder `gh release download` bekommt die Sperre gar nicht erst.)
+Browser-Download zurück: „Apple konnte nicht überprüfen, ob ‚torrocast‘ frei von Schadsoftware
+ist“ – mit den Knöpfen *In den Papierkorb legen* und *Fertig*, keinem zum Öffnen. Drei Wege daran
+vorbei, solange nicht notarisiert wird:
 
-Sind im Repository dieselben Secrets hinterlegt wie bei TorroMail — `MACOS_CERTIFICATE_P12`,
-`MACOS_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_SPECIFIC_PASSWORD` —,
-signiert der Ablauf mit der Developer ID und lässt die Datei notarisieren. Am Workflow ändert
-sich dafür nichts. Eine einzelne Programmdatei lässt sich nicht „stapeln“: Der Mac fragt das
-Ergebnis der Notarisierung beim ersten Start online ab.
+```
+# 1. Die Sperre von der entpackten Datei nehmen
+xattr -d com.apple.quarantine ./torrocast
+
+# 2. Gar nicht erst mit dem Browser laden – gh und curl setzen die Sperre nicht
+gh release download v0.1.0 -R mahype/TorroCast -p '*macos*' && tar -xzf torrocast-*-macos-universal.tar.gz
+```
+
+3\. Nach dem ersten, abgewiesenen Start: *Systemeinstellungen → Datenschutz & Sicherheit*, ganz
+unten „torrocast wurde blockiert“ → *Dennoch öffnen*.
+
+### Dauerhaft: die fünf Secrets
+
+Sind im Repository dieselben Secrets hinterlegt wie bei TorroMail, signiert der Ablauf mit der
+Developer ID, lässt die Datei notarisieren und bricht ab, wenn Apple nicht „Accepted“ sagt. Am
+Workflow ändert sich dafür nichts. GitHub gibt Secrets nicht wieder heraus – sie lassen sich also
+nicht von TorroMail herüberkopieren, sondern müssen noch einmal gesetzt werden, am einfachsten
+auf dem Mac, in dessen Schlüsselbund das Zertifikat liegt:
+
+```
+# Schlüsselbundverwaltung → „Developer ID Application: …“ → Exportieren als cert.p12 (Passwort vergeben)
+base64 -i cert.p12 | gh secret set MACOS_CERTIFICATE_P12 -R mahype/TorroCast
+gh secret set MACOS_CERTIFICATE_PASSWORD  -R mahype/TorroCast   # fragt nach dem Wert
+gh secret set APPLE_ID                    -R mahype/TorroCast   # die Apple-ID-Mailadresse
+gh secret set APPLE_TEAM_ID               -R mahype/TorroCast   # 10 Zeichen, developer.apple.com → Membership
+gh secret set APPLE_APP_SPECIFIC_PASSWORD -R mahype/TorroCast   # account.apple.com → App-spezifische Passwörter
+rm cert.p12
+```
+
+Danach zeigt ein Probelauf (`gh workflow run release.yml`), ob Signatur und Notarisierung
+durchgehen, ohne dass etwas veröffentlicht wird. Eine einzelne Programmdatei lässt sich nicht
+„stapeln“: Der Mac fragt das Ergebnis der Notarisierung beim ersten Start online ab.
 
 ## Solange das Repository privat ist
 

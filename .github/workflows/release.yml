@@ -117,8 +117,12 @@ jobs:
           identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
           codesign --force --options runtime --timestamp --sign "$identity" stage/torrocast
           ditto -c -k stage/torrocast "$RUNNER_TEMP/notarize.zip"
+          # notarytool ends with 0 even when Apple says no; only "Accepted" is a yes.
           xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --wait \
-            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD"
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            | tee "$RUNNER_TEMP/notary.log"
+          grep -q "status: Accepted" "$RUNNER_TEMP/notary.log"
+          codesign --verify --strict --verbose=2 stage/torrocast
 
       - name: The binary starts and says its version
         shell: bash
