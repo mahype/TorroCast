@@ -43,8 +43,8 @@ bleibt der des Terminals.
 | Tests | Render-Tests gegen `TestBackend` | identisch, plus Snapshots mit `insta` |
 
 Neu gegenüber TorroMail sind drei Dinge: ein **Eingabefeld** (Suche), eine
-**Hierarchie zum Hineingehen** (Suche → Podcast → Folge) und ab v0.2 die
-**Wiedergabeleiste**.
+**Hierarchie zum Hineingehen** (Suche → Podcast → Folge) und ab v0.2 der
+**Player in der Menüspalte**.
 
 ## Haltung
 
@@ -95,7 +95,7 @@ Beim Zurückgehen steht die Auswahl dort, wo sie war.
 | `esc` / `←` / `h` / `backspace` | zurück |
 | `tab` / `shift+tab` | Reiter oder Panel wechseln |
 | `/` | suchen oder filtern |
-| `1`–`7` | Menü |
+| `1`–`9` | Menü; `0` öffnet den Player |
 | `o` | Reihenfolge umkehren |
 | `w` | im Browser öffnen |
 | `1`–`9` in Shownotes | nummerierten Link öffnen |
@@ -108,17 +108,17 @@ Alle Befehle kommen ohne ungewöhnliche Modifier aus; das hält die Belegung unt
 Windows verlässlich. Die Maus funktioniert zusätzlich: Klick wählt, Doppelklick öffnet,
 das Rad blättert, Menü und Reiter sind anklickbar.
 
-Ab v0.2, solange etwas läuft: `leertaste` Pause, `b` / `f` 30 s zurück / vor, `<` / `>`
-Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
+Ab v0.2 kommen die Tasten für Wiedergabe und Playlists dazu, siehe
+[Wiedergabe und Playlists](#wiedergabe-und-playlists-ab-v02). `s` abonniert.
 
 ### Breite
 
-| Terminalbreite | Verhalten |
+| Terminalgröße | Verhalten |
 |---|---|
 | ab 100 Spalten | Menü + zwei Panels nebeneinander (Liste und Vorschau) |
-| 80–99 | Menü + ein Panel; die Vorschau entfällt, `enter` öffnet direkt |
-| unter 80 | Menü schrumpft auf die Ziffernspalte |
-| unter 60 × 16 | Hinweis „Das Fenster ist zu klein“ statt zerbrochener Darstellung |
+| 80–99 Spalten | Menü + ein Panel; die Vorschau entfällt, `enter` öffnet direkt |
+| unter 30 Zeilen | der Player in der Menüspalte verzichtet auf die Pegelanzeige |
+| unter 80 × 24 | nur der Hinweis „Das Fenster ist zu klein“ mit aktueller und benötigter Größe, siehe unten |
 
 ## Ansichten v0.1
 
@@ -173,18 +173,108 @@ Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
 - Weitere Reiter: **Bibliothek** (ab v0.2: Ordner wählen, bekannte Geräte),
   **Darstellung** (Cover an/aus, Sprache), **Tasten**.
 
-## Rahmen ab v0.2
+## Wiedergabe und Playlists (ab v0.2)
 
-![Rahmen ab v0.2 mit Wiedergabeleiste](mockups/rahmen.svg)
+Vorlage ist Pocket Casts: ein kleiner Player, der immer da ist, ein großer Player zum
+Aufklappen, und die Liste „Als Nächstes“ (dort „Up Next“), in die man von überall
+Folgen legt. Alles ist mit der Tastatur bedienbar; die Maus ist nur eine Abkürzung.
 
-- Das Menü wächst auf sieben Einträge, wie bei TorroMail. **Neue Folgen** und
-  **Warteschlange** tragen einen Zähler am Eintrag, sobald etwas darin liegt.
-- Die **Wiedergabeleiste** sitzt über der Tastenzeile und ist nur sichtbar, wenn etwas
-  geladen ist. Zeile eins: Zustand, Folge, Podcast, rechts Tempo und Schlaf-Timer.
-  Zeile zwei: Position, Fortschrittsbalken mit Kapitelgrenzen (`┿`), Dauer, aktuelles
-  Kapitel.
-- Der Fortschrittsbalken ist die eine Stelle im Inhalt, an der der Akzent als Fläche
-  auftritt.
+### Der Player in der Menüspalte
+
+![Rahmen ab v0.2 mit Player in der Menüspalte](mockups/rahmen.svg)
+
+Der Player sitzt unter dem Menü, in derselben Spalte, und ist in jeder Ansicht zu
+sehen, solange eine Folge geladen ist. Von oben nach unten:
+
+- **Pegelanzeige:** zeigt live, was gerade zu hören ist. Im Terminal sind das
+  Block-Zeichen in acht Höhenstufen (`▁▂▃▄▅▆▇█`). Bei Pause steht sie still, gedämpft.
+  Eine echte Wellenform der ganzen Folge gibt es nicht: Dafür müsste die komplette
+  Datei vorab geladen und durchgerechnet werden.
+- Folge und Podcast, gekürzt auf die Spaltenbreite.
+- Fortschrittsbalken mit Kapitelgrenzen, darunter Position, Dauer und das Kapitel.
+- **Fünf Knöpfe, unter jedem seine Taste.** Die Knöpfe sind anklickbar, die Tasten
+  wirken in jeder Ansicht:
+
+| Knopf | Taste | Wirkung |
+|---|---|---|
+| `◀◀` | `,` | ein Kapitel zurück; ohne Kapitel zum Anfang der Folge |
+| `▮▮` / `▶` | `leertaste` | Pause / weiter |
+| `■` | `x` | Stopp: Position merken, Player leeren, der Block verschwindet |
+| `▶▶` | `.` | ein Kapitel vor; ohne Kapitel 5 Minuten |
+| `▶▮` | `n` | nächste Folge aus „Als Nächstes“ |
+
+- Dazu ohne Knopf: `b` / `f` springt 30 s zurück / vor (Werte einstellbar, wie bei
+  Pocket Casts), `-` / `+` ändert das Tempo, `t` stellt den Schlaf-Timer, `0` öffnet
+  den großen Player.
+- Alle Tasten liegen auf deutscher und englischer Tastatur direkt, ohne `AltGr`.
+- Ist das Fenster niedriger als 30 Zeilen, entfällt die Pegelanzeige zuerst.
+
+### Beim Suchen in die Playlist legen
+
+![Suche nach Folgen, eine Folge wurde an den Anfang von „Als Nächstes“ gelegt](mockups/hinzufuegen.svg)
+
+- Die Suche hat einen Umschalter **Podcasts / Folgen**. Die Folgensuche läuft über
+  Apple und liefert Audio-Adresse, GUID und Feed gleich mit – eine gefundene Folge
+  lässt sich also direkt einreihen, ohne den Podcast zu öffnen oder zu abonnieren.
+- In **jeder** Folgenliste (Suche, Podcast, Abos, Neue Folgen) gilt:
+
+| Taste | Wirkung | Pocket Casts |
+|---|---|---|
+| `a` | ans Ende von „Als Nächstes“ | Play Last |
+| `A` | an den Anfang von „Als Nächstes“ | Play Next |
+| `p` | jetzt spielen; die laufende Folge rückt auf Platz 1 | Play Now |
+| `L` | in eine Playlist legen … (öffnet eine kleine Auswahl; ab mehreren Playlists) | – |
+
+- Die Auswahl bleibt nach dem Einreihen stehen, damit man mehrere Folgen nacheinander
+  einsammeln kann. Rechts in der Zeile steht, wo die Folge liegt; unten bestätigt ein
+  Satz die Aktion. Dieselbe Taste auf einer schon eingereihten Folge nimmt sie wieder
+  heraus.
+
+### Als Nächstes
+
+![Die Liste „Als Nächstes“](mockups/naechstes.svg)
+
+- Oben die laufende Folge, darunter die Reihenfolge. Der Titel nennt Anzahl und
+  Gesamtdauer.
+- `J` / `K` verschiebt die gewählte Folge, `d` entfernt sie, `p` spielt sie sofort,
+  `C` leert die Liste (fragt in der Zeile nach, kein Dialog).
+- Ist eine Folge zu Ende, läuft Platz 1 ohne Pause weiter. Ist die Liste leer, stoppt
+  der Player.
+- Der Zähler am Menüeintrag zeigt, wie viele Folgen warten.
+
+### Mehrere Playlists (später)
+
+„Als Nächstes“ ist die eine Liste, die der Player abspielt. Eigene Playlists kommen
+als Menüeintrag **Playlists** dazu: benannte Listen, die man mit `L` füllt und mit
+einer Taste komplett oder teilweise in „Als Nächstes“ legt. Später auch Listen nach
+Regeln („alles Ungehörte unter 30 Minuten“), wie die Smart Playlists in Pocket Casts.
+
+Für das Datenformat heißt das: „Als Nächstes“ wird **von Anfang an als Playlist mit
+fester Kennung** gespeichert, nicht als Sonderfall. Dann brauchen mehrere Playlists
+später kein neues Format im Bibliotheks-Ordner.
+
+### Der große Player
+
+![Der große Player mit Kapitelliste](mockups/laeuft.svg)
+
+- `0` oder ein Klick auf den kleinen Player öffnet ihn; `esc` geht zurück. Solange er
+  offen ist, entfällt der kleine Player in der Menüspalte.
+- Cover, Folge, aktuelles Kapitel, Einstellungen der Wiedergabe (Tempo, Stille kürzen,
+  Schlaf-Timer, Sprungweiten), breiter Fortschrittsbalken mit Kapitelgrenzen.
+- Darunter die Kapitel: Gehörtes blass, das laufende markiert. `enter` springt zum
+  gewählten Kapitel. `tab` wechselt zu den Shownotes; Zeitmarken darin sind anspringbar.
+
+## Wenn das Fenster zu klein ist
+
+![Hinweis bei zu kleinem Fenster](mockups/zuklein.svg)
+
+Wie in btop: Unterschreitet das Terminal die Mindestgröße, zeigt TorroCast **nur**
+diesen Hinweis – die aktuelle Größe, die benötigte Größe, und pro Wert rot oder grün,
+ob er reicht. Die Zahlen folgen dem Ziehen am Fenster live. Sobald beide Werte grün
+sind, erscheint die Oberfläche wieder, genau dort, wo man war. Eine laufende Wiedergabe
+geht währenddessen weiter, und die Wiedergabetasten wirken auch im Hinweis.
+
+Mindestgröße: **80 × 24**.
 
 ## Offene Fragen
 

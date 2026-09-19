@@ -72,6 +72,7 @@ Ziel: Podcasts finden und alles über sie lesen können.
 | Farbschemata, passt sich dem Terminal an | |
 | Konfiguration als TOML | Tasten, Verzeichnisse, Land, Sprache |
 | Statuszeile mit Fehlern und laufenden Abrufen | |
+| Hinweis bei zu kleinem Fenster mit aktueller und benötigter Größe (wie btop) | Mindestgröße 80 × 24 |
 
 ## v0.2 – Abos, Wiedergabe, Warteschlange
 
@@ -88,15 +89,21 @@ Ziel: Podcasts finden und alles über sie lesen können.
 | Kapitel-Navigation, Sprung aus der Kapitelliste | Core + UI | |
 | Zeitmarken in Shownotes anspringen | Core + UI | |
 | Position merken und fortsetzen | Core | |
-| Warteschlange mit Umsortieren | Core + UI | |
+| „Als Nächstes“ (Up Next wie Pocket Casts): ans Ende, an den Anfang, jetzt spielen – aus jeder Folgenliste per Taste | Core + UI | intern eine Playlist mit fester Kennung |
+| „Als Nächstes“ umsortieren, entfernen, leeren; automatisch weiter mit der nächsten Folge | Core + UI | |
+| Folgensuche (nicht nur Podcasts) | Core | Apple `entity=podcastEpisode`; Folge direkt einreihbar |
+| Kapitel vor/zurück, nächste Folge, Stopp als eigene Tasten und Knöpfe | Core + UI | |
+| Pegelanzeige im Player | Core + UI | der Core liefert Pegelwerte aus der laufenden Wiedergabe |
+| Großer Player mit Kapitelliste und Shownotes | UI | |
 | Feeds aktualisieren (manuell und periodisch), Neu-Zähler | Core | |
 | Downloads, fortsetzbar | Core | Download-Ordner getrennt vom Bibliotheks-Ordner |
 | Medientasten und Systemintegration | Core | MPRIS (Linux), Now Playing (macOS), SMTC (Windows) |
 | Schlaf-Timer | Core | |
-| Wiedergabeleiste | UI | |
+| Player in der Menüspalte, in jeder Ansicht sichtbar | UI | siehe [oberflaeche.md](oberflaeche.md) |
 
 ## Später
 
+- **Mehrere Playlists:** benannte Listen, per Taste füllen, ganz oder teilweise in „Als Nächstes“ legen; später Listen nach Regeln (Smart Playlists).
 - Einstellungen pro Podcast: Geschwindigkeit, Intro/Outro überspringen, automatisch in die Warteschlange.
 - Auto-Download-Regeln, Speicherlimit, automatisches Aufräumen.
 - Stille kürzen, Lautstärke-Anhebung für Sprache.

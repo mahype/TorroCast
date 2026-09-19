@@ -35,8 +35,8 @@ FAMILY = "ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, 'DejaVu Sa
 
 
 class Canvas:
-    def __init__(self, rows):
-        self.rows = rows
+    def __init__(self, rows, cols=None):
+        self.rows, self.cols = rows, cols or W
         self.back, self.front = [], []
 
     def rect(self, x, y, w, h, fill, rx=0):
@@ -82,7 +82,7 @@ class Canvas:
         self.text(x + 2, y, " " + title + " ", bold=True)
 
     def svg(self):
-        width, height = W * CW, self.rows * CH
+        width, height = self.cols * CW, self.rows * CH
         return "\n".join(
             [
                 f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}" '
@@ -98,18 +98,45 @@ class Canvas:
 # ── the frame every screen shares ────────────────────────────────────────────
 
 V01 = ["Entdecken", "Einstellungen", "Hilfe"]
-V02 = ["Entdecken", "Abos", "Neue Folgen", "Warteschlange", "Downloads", "Einstellungen", "Hilfe"]
+V02 = ["Entdecken", "Abos", "Neue Folgen", "Als Nächstes", "Downloads", "Einstellungen", "Hilfe"]
+PLAYER_ROWS = 14
+LEVELS = [2, 4, 6, 9, 12, 8, 5, 3, 6, 10, 14, 11, 7, 4, 6, 9, 5, 3, 2, 4, 7, 5]
 
 
-def frame(rows, active, entries, hints, badges=None, player=False):
-    """Brand bar, menu and key hints. Returns the canvas and the content area."""
+def mini_player(c, y):
+    """The player at the foot of the menu column: what runs, where it is, and the keys that drive it."""
+    c.panel(0, y, MENU, PLAYER_ROWS, "0  Läuft gerade")
+    for index, level in enumerate(LEVELS):          # live level meter, eighths of a cell
+        height = level / 8
+        c.rect(2 + index, y + 3 - height, 0.8, height, ACCENT if level > 9 else "#a8322d")
+    c.text(2, y + 4, "LdN 412 · Haushalt, R…", bold=True)
+    c.text(2, y + 5, "Lage der Nation", fg=MUTED)
+    c.rect(2, y + 6.42, 22, 0.16, LINE)
+    c.rect(2, y + 6.42, 10, 0.16, ACCENT)
+    for mark in (1, 2, 7, 14, 18, 21):
+        c.rect(2 + mark, y + 6.25, 0.12, 0.5, TERMINAL)
+    c.back.append(f'<circle cx="{12 * CW:.1f}" cy="{(y + 6.5) * CH:.1f}" r="4" fill="{ACCENT}"/>')
+    c.text(2, y + 7, "41:20", fg=MUTED)
+    c.text(24 - 7, y + 7, "1:34:10", fg=MUTED)
+    c.spans(2, y + 8, [("Kapitel 4  ", MUTED), ("Rentenpaket", SILVER)])
+    buttons = [(2, "◀◀", ","), (7, "▮▮", "␣"), (12, "■", "x"), (16, "▶▶", "."), (21, "▶▮", "n")]
+    for x, glyph, key in buttons:
+        c.text(x, y + 10, glyph, fg=TEXT, bold=True)
+        c.text(x - 0.5 + (len(glyph) - 1) / 2, y + 11, f" {key} ", fg=MUTED, bg=KEY)
+    c.spans(2, y + 12, [("1,3×", TEXT, True), ("   ⏾", MUTED), (" 30 min", MUTED)])
+
+
+def frame(rows, active, entries, hints, badges=None, player=False, mini=True):
+    """Brand bar, menu, player and key hints. Returns the canvas and the content area."""
     c = Canvas(rows)
     c.rect(0, 0, W, 1, RED)
     c.spans(2, 0, [("\\_ TORRO", WHITE, True), ("CAST", SILVER, True), (" _/", WHITE, True)])
-    c.text(W - 8, 0, "v0.1.0", fg=VERSION)
+    c.text(W - 8, 0, "v0.2.0" if player else "v0.1.0", fg=VERSION)
 
-    bottom = rows - 1 - (3 if player else 0)
-    c.panel(0, 1, MENU, bottom - 1, "Menü")
+    bottom = rows - 1
+    mini = player and mini
+    menu_rows = bottom - 1 - (PLAYER_ROWS if mini else 0)
+    c.panel(0, 1, MENU, menu_rows, "Menü")
     for index, entry in enumerate(entries):
         y = 3 + index
         if entry == active:
@@ -119,8 +146,11 @@ def frame(rows, active, entries, hints, badges=None, player=False):
             c.spans(2, y, [(f"{index + 1}  ", FAINT), entry])
         if badges and entry in badges:
             badge = f" {badges[entry]} "
-            c.text(MENU - 2 - len(badge), y, badge, fg=WHITE, bold=True, bg=ACCENT)
-    c.text(2, bottom - 2, "Podcasts im Terminal.", fg=FAINT)
+            c.text(MENU - 2 - len(badge), y, badge, fg=WHITE, bold=True, bg="#a50a0a" if entry == active else ACCENT)
+    if mini:
+        mini_player(c, 1 + menu_rows)
+    else:
+        c.text(2, bottom - 2, "Podcasts im Terminal.", fg=FAINT)
 
     x = 1
     for key, label in hints:
@@ -309,13 +339,15 @@ def quellen():
     return c
 
 
-# ── 5. Rahmen ab v0.2 ────────────────────────────────────────────────────────
+# ── 5. Rahmen ab v0.2: Player in der Menüspalte ─────────────────────────────
+
+BADGES = {"Neue Folgen": 6, "Als Nächstes": 3}
+
 
 def rahmen():
-    rows = 20
-    c, (x, y, w, h) = frame(rows, "Abos", V02,
-                            [("leertaste", "Pause"), ("b f", "±30 s"), ("< >", "Kapitel"), ("- +", "Tempo"), ("a", "Warteschlange"), ("1-7", "Menü")],
-                            badges={"Neue Folgen": 6, "Warteschlange": 3}, player=True)
+    c, (x, y, w, h) = frame(28, "Abos", V02,
+                            [("␣", "Pause"), ("b f", "±30 s"), (", .", "Kapitel"), ("n", "Nächste Folge"), ("x", "Stopp"), ("- +", "Tempo"), ("0", "Player")],
+                            badges=BADGES, player=True)
     c.panel(x, y, w, h, "Abos · 23", focused=True)
     subscriptions = [
         ("Lage der Nation", "2 neu", "zuletzt heute"), ("Logbuch:Netzpolitik", "1 neu", "zuletzt gestern"),
@@ -329,26 +361,139 @@ def rahmen():
         c.text(x + 2, row, title, bold=index == 0)
         c.text(x + 50, row, new, fg=GREEN)
         c.text(x + 58, row, last, fg=MUTED)
+    return c
 
-    top = rows - 4
-    c.rect(0, top + 0.45, W, 0.06, LINE)
-    c.spans(1, top + 1, [("▶  ", ACCENT, True), ("LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen", TEXT, True),
-                         (" — Lage der Nation", MUTED)])
-    c.spans(W - 20, top + 1, [("1,3×", TEXT, True), "    ", ("⏾", MUTED), (" 30 min", MUTED)])
-    c.text(4, top + 2, "00:41:20", fg=MUTED)
-    start, length, played = 14, 62, 27
-    c.rect(start, top + 2.42, length, 0.16, LINE)
-    c.rect(start, top + 2.42, played, 0.16, ACCENT)
-    for mark in (2, 4, 20, 39, 51, 59):   # chapter boundaries
-        c.rect(start + mark, top + 2.25, 0.12, 0.5, TERMINAL)
-    c.back.append(f'<circle cx="{(start + played) * CW:.1f}" cy="{(top + 2.5) * CH:.1f}" r="4.5" fill="{ACCENT}"/>')
-    c.text(start + length + 2, top + 2, "1:34:10", fg=MUTED)
-    c.text(start + length + 12, top + 2, "Rentenpaket", fg=SILVER)
+
+# ── 6. Beim Suchen in „Als Nächstes“ legen ───────────────────────────────────
+
+def hinzufuegen():
+    c, (x, y, w, h) = frame(28, "Entdecken", V02,
+                            [("a", "Ans Ende"), ("A", "An den Anfang"), ("p", "Jetzt spielen"), ("enter", "Öffnen"), ("tab", "Reiter"), ("esc", "Zurück")],
+                            badges={"Neue Folgen": 6, "Als Nächstes": 4}, player=True)
+    c.panel(x, y, w, 6, "Entdecken")
+    tabs(c, x + 3, y + 1, ["Suche", "Charts", "Kategorien"], "Suche")
+    c.spans(x + 3, y + 4, [("⌕", MUTED), " rentenpaket"])
+    c.spans(x + w - 24, y + 4, [("Podcasts", MUTED), "   ", ("Folgen", TEXT, True)])
+    c.rect(x + w - 13, y + 5.05, 6, 0.12, ACCENT)
+
+    c.panel(x, y + 6, w, h - 6, "9 Folgen", focused=True)
+    results = [
+        ("Aufstand gegen das Rentenpaket (Update)", "Was jetzt? · 05.08.2026 · 11:23", "✓ Als Nächstes · Platz 1"),
+        ("Rentenpaket – CSU-Politiker Hoffmann: Das wird uns noch öfter …", "Interview der Woche · 07.12.2025 · 25:08", ""),
+        ("LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen", "Lage der Nation · 19.09.2026 · 1:34:10", "▶ läuft"),
+        ("Rentenpaket: Was die Kommission jetzt klären muss", "Der Tag · 02.09.2026 · 32:40", ""),
+        ("Wer zahlt das Rentenpaket?", "Wirtschaft vor acht · 28.08.2026 · 8:12", ""),
+    ]
+    for index, (title, meta, state) in enumerate(results):
+        row = y + 7 + index * 3
+        if index == 0:
+            selected(c, x + 1, row, w - 2, 2)
+        c.text(x + 2, row, title, bold=index == 0)
+        c.text(x + 2, row + 1, meta, fg=MUTED)
+        if state:
+            c.text(x + w - 3 - len(state), row, state, fg=GREEN if state.startswith("✓") else ACCENT)
+    c.spans(x + 2, y + h - 2, [("✓ ", GREEN), ("„Aufstand gegen das Rentenpaket“ liegt jetzt am Anfang von Als Nächstes.", MUTED)])
+    return c
+
+
+# ── 7. Als Nächstes ──────────────────────────────────────────────────────────
+
+def naechstes():
+    c, (x, y, w, h) = frame(28, "Als Nächstes", V02,
+                            [("↑↓", "Auswahl"), ("J K", "Verschieben"), ("d", "Entfernen"), ("p", "Jetzt spielen"), ("C", "Leeren"), ("esc", "Zurück")],
+                            badges={"Neue Folgen": 6, "Als Nächstes": 4}, player=True)
+    c.panel(x, y, w, 5, "Läuft gerade")
+    c.spans(x + 2, y + 1, [("▶ ", ACCENT, True), ("LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen", TEXT, True)])
+    c.text(x + 4, y + 2, "Lage der Nation · noch 52:50", fg=MUTED)
+    c.text(x + 4, y + 3, "Danach geht es ohne Pause mit Platz 1 weiter.", fg=FAINT)
+
+    c.panel(x, y + 5, w, h - 5, "Als Nächstes · 4 Folgen · 2:19:45", focused=True)
+    queue = [
+        ("Aufstand gegen das Rentenpaket (Update)", "Was jetzt?", "11:23"),
+        ("LNP 531 · Chatkontrolle, die dritte", "Logbuch:Netzpolitik", "1:48:02"),
+        ("Rentenpaket – CSU-Politiker Hoffmann: Das wird uns noch öfter …", "Interview der Woche", "25:08"),
+        ("Minkorrekt 341 · Plasma im Marmeladenglas", "Methodisch inkorrekt · angefangen, weiter ab 1:02:10", "noch 55:00"),
+    ]
+    for index, (title, meta, length) in enumerate(queue):
+        row = y + 6 + index * 3
+        if index == 1:
+            selected(c, x + 1, row, w - 2, 2)
+        c.text(x + 2, row, f"{index + 1}", fg=FAINT)
+        c.text(x + 5, row, title, bold=index == 1)
+        c.text(x + 5, row + 1, meta, fg=MUTED)
+        c.text(x + w - 3 - len(length), row, length, fg=MUTED)
+    return c
+
+
+# ── 8. Der große Player ──────────────────────────────────────────────────────
+
+def laeuft():
+    c, (x, y, w, h) = frame(28, None, V02,
+                            [("␣", "Pause"), ("b f", "±30 s"), (", .", "Kapitel"), ("n", "Nächste"), ("x", "Stopp"), ("- +", "Tempo"), ("t", "Timer")],
+                            badges=BADGES, player=True, mini=False)
+    c.panel(x, y, w, 13, "Läuft gerade")
+    c.back.append(
+        f'<rect x="{(x + 2) * CW:.1f}" y="{(y + 1.2) * CH:.1f}" width="{16 * CW:.1f}" height="{7.4 * CH:.1f}" rx="4" fill="#23384f"/>'
+    )
+    c.text(x + 8, y + 4, "LAGE", fg="#f0c94a", bold=True)
+    c.text(x + 5, y + 5, "der Nation", fg=WHITE)
+    tx = x + 21
+    c.text(tx, y + 1, "LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen", bold=True)
+    c.text(tx, y + 2, "Lage der Nation · 19. September 2026", fg=MUTED)
+    c.spans(tx, y + 4, [("Kapitel 4 von 7   ", MUTED), ("Rentenpaket", SILVER, True)])
+    c.spans(tx, y + 6, [("Tempo ", MUTED), ("1,3×", TEXT, True), ("    Stille kürzen ", MUTED), ("an", GREEN),
+                        ("    Schlaf-Timer ", MUTED), ("30 min", TEXT)])
+    c.spans(tx, y + 7, [("Springen ", MUTED), "30 s", (" vor, ", MUTED), "10 s", (" zurück", MUTED)])
+
+    start, length, played = x + 11, 56, 25
+    c.text(x + 2, y + 10, "00:41:20", fg=TEXT, bold=True)
+    c.rect(start, y + 10.4, length, 0.2, LINE)
+    c.rect(start, y + 10.4, played, 0.2, ACCENT)
+    for mark in (2, 4, 18, 35, 46, 53):
+        c.rect(start + mark, y + 10.2, 0.14, 0.6, TERMINAL)
+    c.back.append(f'<circle cx="{(start + played) * CW:.1f}" cy="{(y + 10.5) * CH:.1f}" r="5" fill="{ACCENT}"/>')
+    c.text(start + length + 2, y + 10, "-0:52:50", fg=MUTED)
+
+    c.panel(x, y + 13, w, h - 13, "Kapitel · 7", focused=True)
+    chapters = [
+        ("00:00:00", "Begrüßung", "3:12"), ("00:03:12", "Hausmitteilungen", "3:28"),
+        ("00:06:40", "Haushalt 2027", "24:25"), ("00:31:05", "Rentenpaket", "27:42"),
+        ("00:58:47", "Wahl in Norwegen", "18:33"), ("01:17:20", "Chatkontrolle", "11:42"),
+        ("01:29:02", "Verabschiedung", "5:08"),
+    ]
+    for index, (time, title, length_) in enumerate(chapters):
+        row = y + 14 + index
+        done = index < 3
+        if index == 3:
+            selected(c, x + 1, row, w - 2)
+            c.text(x + 2, row, "▶", fg=ACCENT, bold=True)
+        c.text(x + 5, row, time, fg=FAINT if done else MUTED)
+        c.text(x + 16, row, title, fg=FAINT if done else TEXT, bold=index == 3)
+        c.text(x + w - 3 - len(length_), row, length_, fg=FAINT if done else MUTED)
+    return c
+
+
+# ── 9. Fenster zu klein ──────────────────────────────────────────────────────
+
+def zuklein():
+    cols, rows = 64, 15
+    c = Canvas(rows, cols)
+
+    def centred(y, spans):
+        width = sum(len(span if isinstance(span, str) else span[0]) for span in spans)
+        c.spans((cols - width) // 2, y, spans)
+
+    centred(4, [("Das Fenster ist zu klein", TEXT, True)])
+    centred(6, [("Jetzt      ", MUTED), ("Breite ", TEXT), ("64", ACCENT, True), ("   Höhe ", TEXT), ("15", ACCENT, True)])
+    centred(7, [("Benötigt   ", MUTED), ("Breite ", TEXT), ("80", GREEN, True), ("   Höhe ", TEXT), ("24", GREEN, True)])
+    centred(10, [("Zieh das Fenster größer – TorroCast läuft weiter.", FAINT)])
     return c
 
 
 if __name__ == "__main__":
     OUT.mkdir(exist_ok=True)
-    for name, build in {"suche": suche, "podcast": podcast, "folge": folge, "quellen": quellen, "rahmen": rahmen}.items():
+    screens = {"suche": suche, "podcast": podcast, "folge": folge, "quellen": quellen, "rahmen": rahmen,
+               "hinzufuegen": hinzufuegen, "naechstes": naechstes, "laeuft": laeuft, "zuklein": zuklein}
+    for name, build in screens.items():
         (OUT / f"{name}.svg").write_text(build().svg() + "\n")
         print("wrote", OUT / f"{name}.svg")
