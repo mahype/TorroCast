@@ -23,7 +23,7 @@ use torrocast_feed::chapters;
 use torrocast_net::{Fetch, FetchError};
 
 pub use fresh::NewEpisode;
-pub use playback::{NowPlaying, QueueItem, Status};
+pub use playback::{NowPlaying, QueueItem, Sleep, Status};
 pub use settings::Settings;
 pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merge};
 pub use torrocast_feed::chapters::merge as merge_chapters;
@@ -137,6 +137,8 @@ pub enum Transport {
     SeekBy(i64),
     SeekTo(u64),
     SpeedBy(f32),
+    /// One step further on the sleep timer: 15, 30, 45, 60 minutes, end of the episode, off.
+    CycleSleep,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -191,6 +193,7 @@ pub struct PlaybackState {
     pub now: Option<NowPlaying>,
     pub up_next: Vec<QueueItem>,
     pub speed: f32,
+    pub sleep: Option<Sleep>,
 }
 
 struct Shared {
@@ -359,6 +362,10 @@ impl Core {
             Transport::SeekBy(delta_ms) => self.playback.seek_by(delta_ms),
             Transport::SeekTo(position_ms) => self.playback.seek_to(position_ms),
             Transport::SpeedBy(delta) => self.playback.change_speed(delta),
+            Transport::CycleSleep => {
+                self.playback.cycle_sleep(std::time::Instant::now());
+                Vec::new()
+            }
         };
         self.carry_out(actions);
         self.keep();
@@ -463,6 +470,7 @@ impl Core {
             now: self.playback.now.clone(),
             up_next: self.playback.up_next.clone(),
             speed: self.playback.speed,
+            sleep: self.playback.sleep(std::time::Instant::now()),
         };
         let _ = self.events.send(Event::Playback(Box::new(state)));
     }
@@ -473,6 +481,11 @@ impl Core {
         let reports: Vec<PlayerEvent> =
             self.player.as_ref().map(|(_, events)| events.try_iter().collect()).unwrap_or_default();
         let mut changed = false;
+        let asleep = self.playback.sleep_due(std::time::Instant::now());
+        if !asleep.is_empty() {
+            self.carry_out(asleep);
+            changed = true;
+        }
         for report in reports {
             match report {
                 PlayerEvent::Level(level) => {

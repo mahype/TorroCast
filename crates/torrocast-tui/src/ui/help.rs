@@ -49,6 +49,7 @@ const RIGHT: &[Group] = &[
             ("n", "next episode from Up Next"),
             ("b  f", "30 seconds back and forward"),
             ("-  +", "slower and faster, at the same pitch"),
+            ("t", "sleep timer: 15, 30, 45, 60 minutes, end of the episode, off"),
             ("0", "open and close the large player"),
         ],
     ),

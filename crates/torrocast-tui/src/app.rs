@@ -728,6 +728,7 @@ impl App {
             KeyCode::Char('f') => Transport::SeekBy(SEEK_FORWARD_MS),
             KeyCode::Char('-') => Transport::SpeedBy(-0.1),
             KeyCode::Char('+' | '=') => Transport::SpeedBy(0.1),
+            KeyCode::Char('t') => Transport::CycleSleep,
             _ => return false,
         };
         self.transport(transport);

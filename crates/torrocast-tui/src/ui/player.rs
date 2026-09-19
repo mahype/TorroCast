@@ -6,7 +6,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
-use torrocast_core::{NowPlaying, Status};
+use torrocast_core::{NowPlaying, Sleep, Status};
 
 use super::{empty, panel};
 use crate::app::{App, LEVELS, PLAYER_ROWS};
@@ -66,6 +66,16 @@ fn progress(now: &NowPlaying, width: usize, with_chapters: bool) -> Line<'static
         })
         .collect::<Vec<_>>();
     Line::from(spans)
+}
+
+/// "28 min", or where there is little room "28′"; "end of the episode" likewise.
+fn sleep_label(app: &App, short: bool) -> Option<String> {
+    Some(match (app.playback.sleep?, short) {
+        (Sleep::Minutes(minutes), true) => format!("{minutes}′"),
+        (Sleep::Minutes(minutes), false) => format!("{minutes} min"),
+        (Sleep::EndOfEpisode, true) => app.lang.t("end").to_owned(),
+        (Sleep::EndOfEpisode, false) => app.lang.t("until the end of the episode").to_owned(),
+    })
 }
 
 fn status_mark(now: &NowPlaying) -> (&'static str, Style) {
@@ -138,7 +148,11 @@ pub fn draw_mini(frame: &mut Frame<'_>, area: Rect, app: &App, now: &NowPlaying)
     ]));
     lines.push(Line::from(vec![
         Span::styled(format!(" {:.1}×", app.playback.speed).replace('.', lang.decimal()), theme::bold()),
-        Span::styled(format!("   ≡ {}", app.playback.up_next.len()), theme::muted()),
+        Span::styled(format!("  ≡ {}", app.playback.up_next.len()), theme::muted()),
+        Span::styled(
+            sleep_label(app, true).map(|label| format!("  ⏾ {label}")).unwrap_or_default(),
+            Style::new().fg(theme::SILVER),
+        ),
     ]));
     frame.render_widget(Paragraph::new(lines), inner);
 }
@@ -180,6 +194,8 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, now: &NowPlaying) {
         Span::styled(format!("{:.1}×", app.playback.speed).replace('.', lang.decimal()), theme::bold()),
         Span::styled(format!("      {}  ", lang.t("Up Next")), theme::muted()),
         Span::raw(app.playback.up_next.len().to_string()),
+        Span::styled(format!("      {}  ", lang.t("Sleep timer")), theme::muted()),
+        Span::raw(sleep_label(app, false).unwrap_or_else(|| lang.t("off").to_owned())),
     ]));
     lines.push(Line::default());
 

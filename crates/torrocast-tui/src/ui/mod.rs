@@ -162,7 +162,7 @@ fn key_hints(app: &App) -> Line<'static> {
     let mut hints: Vec<(&'static str, &'static str)> = Vec::new();
     if app.player_open {
         hints.extend([("␣", "pause"), ("b f", "±30 s"), (", .", "chapter"), ("n", "next episode"), ("x", "stop")]);
-        hints.extend([("- +", "tempo"), ("enter", "jump"), ("esc", "back")]);
+        hints.extend([("- +", "tempo"), ("t", "sleep timer"), ("enter", "jump"), ("esc", "back")]);
         return hint_line(app, &hints);
     }
     match app.section {

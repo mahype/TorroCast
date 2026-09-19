@@ -3,6 +3,7 @@
 //! engine has to carry out, so all of this is testable without a sound card.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use torrocast_feed::Chapter;
 
@@ -78,6 +79,23 @@ impl NowPlaying {
     }
 }
 
+/// The steps the sleep timer is set in, in minutes; after the last comes "end of the episode", then off.
+pub const SLEEP_STEPS: [u32; 4] = [15, 30, 45, 60];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SleepTimer {
+    At(Instant),
+    EndOfEpisode,
+}
+
+/// The sleep timer as a listener wants to read it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sleep {
+    /// Minutes left, rounded up.
+    Minutes(u32),
+    EndOfEpisode,
+}
+
 /// An order for the audio engine.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
@@ -118,11 +136,22 @@ pub struct Playback {
     positions: HashMap<String, u64>,
     /// Notes not yet collected by whoever keeps the library.
     notes: Vec<ProgressNote>,
+    sleep: Option<SleepTimer>,
+    /// How often the timer key was pressed since "off"; picks the next step.
+    sleep_step: usize,
 }
 
 impl Default for Playback {
     fn default() -> Self {
-        Self { now: None, up_next: Vec::new(), speed: 1.0, positions: HashMap::new(), notes: Vec::new() }
+        Self {
+            now: None,
+            up_next: Vec::new(),
+            speed: 1.0,
+            positions: HashMap::new(),
+            notes: Vec::new(),
+            sleep: None,
+            sleep_step: 0,
+        }
     }
 }
 
@@ -140,6 +169,47 @@ impl Playback {
             Some(position_ms) => self.positions.insert(item.library_id(), position_ms),
             None => self.positions.remove(&item.library_id()),
         };
+    }
+
+    /// One press further: 15, 30, 45, 60 minutes, the end of the episode, off.
+    pub fn cycle_sleep(&mut self, now: Instant) {
+        self.sleep_step = (self.sleep_step + 1) % (SLEEP_STEPS.len() + 2);
+        self.sleep = match self.sleep_step {
+            0 => None,
+            step if step <= SLEEP_STEPS.len() => {
+                Some(SleepTimer::At(now + Duration::from_secs(u64::from(SLEEP_STEPS[step - 1]) * 60)))
+            }
+            _ => Some(SleepTimer::EndOfEpisode),
+        };
+    }
+
+    #[must_use]
+    pub fn sleep(&self, now: Instant) -> Option<Sleep> {
+        match self.sleep? {
+            SleepTimer::At(deadline) => {
+                Some(Sleep::Minutes(deadline.saturating_duration_since(now).as_secs().div_ceil(60) as u32))
+            }
+            SleepTimer::EndOfEpisode => Some(Sleep::EndOfEpisode),
+        }
+    }
+
+    fn sleep_off(&mut self) {
+        (self.sleep, self.sleep_step) = (None, 0);
+    }
+
+    /// Called regularly: when the time is up, playback pauses — and stays where it is for tomorrow.
+    pub fn sleep_due(&mut self, now: Instant) -> Vec<Action> {
+        match self.sleep {
+            Some(SleepTimer::At(deadline)) if now >= deadline => {
+                self.sleep_off();
+                if self.now.as_ref().is_some_and(|playing| playing.status == Status::Playing) {
+                    self.toggle()
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => Vec::new(),
+        }
     }
 
     /// The notes taken since the last call.
@@ -371,6 +441,11 @@ impl Playback {
             let position_ms = now.duration_ms.unwrap_or(now.position_ms);
             self.notes.push(ProgressNote { key, position_ms, duration_ms: now.duration_ms, played: true });
         }
+        // "Until the end of the episode" means exactly that: nothing follows.
+        if self.sleep == Some(SleepTimer::EndOfEpisode) {
+            self.sleep_off();
+            return Vec::new();
+        }
         self.next_episode()
     }
 }
@@ -499,6 +574,38 @@ mod tests {
         assert_eq!(playback.previous_chapter(), vec![Action::Seek(0)]);
         assert_eq!(playback.seek_by(-999_999_999), vec![Action::Seek(0)]);
         assert_eq!(playback.seek_by(i64::MAX), vec![Action::Seek(3_600_000)], "never past the end");
+    }
+
+    #[test]
+    fn the_sleep_timer_pauses_and_the_end_of_episode_timer_lets_nothing_follow() {
+        use std::time::{Duration, Instant};
+
+        use super::Sleep;
+
+        let start = Instant::now();
+        let mut playback = Playback::default();
+        playback.enqueue(item("a"), false);
+        playback.enqueue(item("b"), false);
+        playback.on_started(None);
+        playback.on_position(60_000);
+
+        playback.cycle_sleep(start);
+        assert_eq!(playback.sleep(start + Duration::from_secs(61)), Some(Sleep::Minutes(14)));
+        assert!(playback.sleep_due(start + Duration::from_secs(14 * 60)).is_empty());
+        assert_eq!(playback.sleep_due(start + Duration::from_secs(15 * 60)), vec![Action::Pause]);
+        assert_eq!(playback.sleep(start), None, "a timer that went off is off");
+        assert_eq!(playback.take_notes().len(), 1, "the place is written down when the timer pauses");
+
+        for _ in 0..5 {
+            playback.cycle_sleep(start);
+        }
+        assert_eq!(playback.sleep(start), Some(Sleep::EndOfEpisode));
+        assert!(playback.on_ended().is_empty());
+        assert!(playback.now.is_none());
+        assert_eq!(titles(&playback), vec!["b"], "the next episode waits for tomorrow");
+        playback.cycle_sleep(start);
+        playback.cycle_sleep(start);
+        assert_eq!(playback.sleep(start), Some(Sleep::Minutes(30)), "after off the steps begin again");
     }
 
     #[test]

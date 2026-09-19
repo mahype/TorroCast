@@ -282,6 +282,7 @@ fn playing(app: &mut App, queued: &[&str]) {
         }),
         up_next: queued.iter().map(|title| item(title)).collect(),
         speed: 1.3,
+        sleep: Some(torrocast_core::Sleep::Minutes(28)),
     })));
 }
 
@@ -324,6 +325,7 @@ fn the_player_sits_under_the_menu_on_every_screen() {
         assert!(text.contains("Kapitel 2  Haushalt"));
         assert!(text.contains("◀◀") && text.contains("▶▮"));
         assert!(text.contains("1,3×"));
+        assert!(text.contains("⏾ 28′"), "the sleep timer counts down in the player");
     }
     assert!(
         screen(&app, 104, 32).contains("Als Nächstes") && screen(&app, 104, 32).contains(" 2 "),
@@ -354,7 +356,7 @@ fn the_playback_keys_work_everywhere_but_not_while_typing() {
     assert_eq!(app.search.input, "n x");
 
     press(&mut app, KeyCode::Esc);
-    for key in [' ', ',', '.', 'n', 'b', 'f', '+', '-', 'x'] {
+    for key in [' ', ',', '.', 'n', 'b', 'f', '+', '-', 't', 'x'] {
         press(&mut app, KeyCode::Char(key));
     }
     assert_eq!(
@@ -368,6 +370,7 @@ fn the_playback_keys_work_everywhere_but_not_while_typing() {
             Transport::SeekBy(30_000),
             Transport::SpeedBy(0.1),
             Transport::SpeedBy(-0.1),
+            Transport::CycleSleep,
             Transport::Stop,
         ]
     );

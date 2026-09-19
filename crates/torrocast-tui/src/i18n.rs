@@ -158,6 +158,15 @@ const GERMAN: &[(&str, &str)] = &[
     ("number", "Platz"),
     ("Podcasts", "Podcasts"),
     ("Searching for episodes …", "Suche Folgen …"),
+    ("Sleep timer", "Schlaf-Timer"),
+    ("sleep timer", "Schlaf-Timer"),
+    ("off", "aus"),
+    ("end", "Ende"),
+    ("until the end of the episode", "bis zum Ende der Folge"),
+    (
+        "sleep timer: 15, 30, 45, 60 minutes, end of the episode, off",
+        "Schlaf-Timer: 15, 30, 45, 60 Minuten, Ende der Folge, aus",
+    ),
     // key hints
     ("pause", "Pause"),
     ("chapter", "Kapitel"),
