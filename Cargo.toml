@@ -4,6 +4,7 @@ members = [
     "crates/torrocast-directory",
     "crates/torrocast-feed",
     "crates/torrocast-library",
+    "crates/torrocast-media",
     "crates/torrocast-player",
     "crates/torrocast-core",
     "crates/torrocast-tui",

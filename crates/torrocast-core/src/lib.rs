@@ -16,6 +16,7 @@ use std::thread;
 use downloads::Downloads;
 use keeper::Keeper;
 use playback::{Action, Playback};
+use torrocast_media::{MediaKey, MediaSession, NowPlayingInfo};
 use torrocast_player::{Media, Player, PlayerEvent};
 
 use torrocast_directory::apple::Apple;
@@ -260,6 +261,9 @@ pub struct Core {
     /// `None` when the library folder could not be opened; everything then lasts for the session.
     keeper: Option<Keeper>,
     downloads: Option<Downloads>,
+    /// The desktop's media controls, opened with the first episode. `None` where there are none.
+    media: Option<(MediaSession, Receiver<MediaKey>)>,
+    media_tried: bool,
 }
 
 impl Core {
@@ -294,6 +298,8 @@ impl Core {
             refresh_failed: 0,
             keeper,
             downloads: None,
+            media: None,
+            media_tried: false,
         };
         let mut core = core;
         if let Some(keeper) = &core.keeper {
@@ -558,7 +564,31 @@ impl Core {
         }
     }
 
-    fn publish(&self) {
+    /// Tells the desktop's media controls what plays, opening them when first needed.
+    fn tell_desktop(&mut self) {
+        // Automated tests have no business on the session bus.
+        if self.output == OutputKind::Null {
+            return;
+        }
+        if self.playback.now.is_some() && !self.media_tried {
+            self.media_tried = true;
+            self.media = MediaSession::open();
+        }
+        let info = self.playback.now.as_ref().map(|now| NowPlayingInfo {
+            title: now.item.title.clone(),
+            podcast: now.item.podcast.clone(),
+            artwork_url: now.item.artwork_url.clone(),
+            duration_ms: now.duration_ms,
+            position_ms: now.position_ms,
+            playing: now.status == Status::Playing,
+        });
+        if let Some((session, _)) = &mut self.media {
+            session.update(info.as_ref());
+        }
+    }
+
+    fn publish(&mut self) {
+        self.tell_desktop();
         let state = PlaybackState {
             now: self.playback.now.clone(),
             up_next: self.playback.up_next.clone(),
@@ -571,6 +601,26 @@ impl Core {
     /// Takes in what the audio engine has reported since the last call. The
     /// interface calls this on every turn of its loop.
     pub fn pump(&mut self) {
+        // Media keys, the headset's button, the panel's sound menu.
+        let keys: Vec<MediaKey> = self.media.as_ref().map(|(_, keys)| keys.try_iter().collect()).unwrap_or_default();
+        for key in keys {
+            let playing = self.playback.now.as_ref().is_some_and(|now| now.status == Status::Playing);
+            let transport = match key {
+                MediaKey::Toggle => Some(Transport::Toggle),
+                MediaKey::Play if !playing => Some(Transport::Toggle),
+                MediaKey::Pause if playing => Some(Transport::Toggle),
+                MediaKey::Play | MediaKey::Pause => None,
+                MediaKey::Stop => Some(Transport::Stop),
+                MediaKey::Next => Some(Transport::NextChapter),
+                MediaKey::Previous => Some(Transport::PreviousChapter),
+                MediaKey::SeekBy(delta_ms) => Some(Transport::SeekBy(delta_ms)),
+                MediaKey::SeekTo(position_ms) => Some(Transport::SeekTo(position_ms)),
+            };
+            if let Some(transport) = transport {
+                self.transport(transport);
+            }
+        }
+
         let reports: Vec<PlayerEvent> =
             self.player.as_ref().map(|(_, events)| events.try_iter().collect()).unwrap_or_default();
         let mut changed = false;

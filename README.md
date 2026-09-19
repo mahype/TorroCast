@@ -40,6 +40,8 @@ following `LANG`. An address typed into the search field is opened as a feed.
   `t` sets a sleep timer.
   The player sits under the menu on every screen, with a level meter and clickable
   buttons; `0` opens the large player with the chapter list.
+- **Media keys (Linux):** TorroCast announces itself over MPRIS, so the keyboard's media keys,
+  the panel's sound menu and the lock screen see what plays and can steer it.
 - **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,
   search results included. When an episode ends the next one starts. `J` `K` reorder,
   `d` removes, `C` empties.
@@ -58,7 +60,7 @@ following `LANG`. An address typed into the search field is opened as a feed.
   playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not yet: media keys, several playlists, Opus and HE-AAC audio.
+Not yet: media keys on macOS and Windows, several playlists, Opus and HE-AAC audio.
 
 ## Layout
 
@@ -68,6 +70,7 @@ Not yet: media keys, several playlists, Opus and HE-AAC audio.
 | `torrocast-directory` | Directories: Apple, fyyd, and merging their answers |
 | `torrocast-feed` | Feed parsing, chapters, show notes — pure, no network |
 | `torrocast-library` | The library folder: per-device journals, merged without conflicts |
+| `torrocast-media` | The desktop's media controls; MPRIS on Linux |
 | `torrocast-player` | Streaming, decoding, tempo at the same pitch (WSOLA), the sound card |
 | `torrocast-core` | Commands in, events out; playback, Up Next and the library's upkeep; settings. No user interface |
 | `torrocast-tui` | The terminal interface (binary `torrocast`) |

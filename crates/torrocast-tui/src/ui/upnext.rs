@@ -35,7 +35,10 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
             };
             let lines = vec![
                 Line::from(vec![
-                    Span::styled(" ▶ ", Style::new().fg(theme::ACCENT)),
+                    Span::styled(
+                        if now.status == torrocast_core::Status::Playing { " ▶ " } else { " ▮▮" },
+                        Style::new().fg(theme::ACCENT),
+                    ),
                     Span::styled(fit(&now.item.title, width).trim_end().to_owned(), theme::bold()),
                 ]),
                 Line::styled(format!("   {}{}", now.item.podcast, remaining.unwrap_or_default()), theme::muted()),

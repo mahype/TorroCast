@@ -9,7 +9,8 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [x] Downloads: Folgen laden (`D`), von der Platte abspielen, Download-Ansicht, löschen
 - [ ] Downloads: laufenden Download abbrechen; automatisch laden und aufräumen; Download-Ordner in der Oberfläche wählen (bisher `download_dir` in der `config.toml`)
 - [x] Cover-Bilder im Podcast-Kopf und im großen Player (Kitty, Sixel, iTerm2 nach Terminal, sonst Halbblöcke; abschaltbar; Platten-Cache). In tmux als Halbblöcke geprüft – **Sixel in foot und Kitty-Grafik noch von niemandem angesehen**
-- [ ] Medientasten und Systemintegration (MPRIS, Now Playing, SMTC)
+- [x] Medientasten unter Linux (MPRIS): Medientasten, Klangmenü, Sperrbildschirm sehen und steuern die Wiedergabe – gegen den Session-Bus geprüft
+- [ ] Medientasten unter macOS (braucht einen Run-Loop auf dem Main-Thread) und Windows (braucht ein verstecktes Fenster)
 - [ ] Mehrere Playlists
 - [ ] Bibliotheks-Ordner: verdichtete Schnappschüsse, alte Journale entfernen
 - [ ] Opus und HE-AAC

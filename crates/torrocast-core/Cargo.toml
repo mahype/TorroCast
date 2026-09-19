@@ -15,6 +15,7 @@ torrocast-net = { path = "../torrocast-net" }
 torrocast-directory = { path = "../torrocast-directory" }
 torrocast-feed = { path = "../torrocast-feed" }
 torrocast-library = { path = "../torrocast-library" }
+torrocast-media = { path = "../torrocast-media" }
 torrocast-player = { path = "../torrocast-player" }
 chrono.workspace = true
 serde.workspace = true
