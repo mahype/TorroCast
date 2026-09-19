@@ -1,0 +1,53 @@
+{
+    "status": 1,
+    "msg": "ok",
+    "meta": {
+        "paging": {
+            "count": 2,
+            "page": 0,
+            "first_page": 0,
+            "last_page": 0,
+            "next_page": null,
+            "prev_page": null
+        },
+        "API_INFO": {
+            "API_VERSION": "0.2"
+        },
+        "SERVER": "88.99.101.163",
+        "duration": 0
+    },
+    "data": [
+        {
+            "title": "Lage der Nation - der Politik-Podcast aus Berlin",
+            "id": 44980,
+            "xmlURL": "https:\/\/feeds.lagedernation.org\/feeds\/ldn-mp3.xml",
+            "htmlURL": "https:\/\/lagedernation.org",
+            "imgURL": "https:\/\/lagedernation.org\/wp-content\/blogs.dir\/10\/files\/2020\/06\/apple_podcast_artwork_reverse.png",
+            "status": 200,
+            "status_since": "2026-04-17 12:00:07",
+            "slug": "lage-der-nation",
+            "layoutImageURL": "https:\/\/img-1.fyyd.de\/pd\/layout\/44980f2718c38e30e0b67eea55031f632653b.jpg",
+            "thumbImageURL": "https:\/\/img-1.fyyd.de\/pd\/thumbs\/44980f2718c38e30e0b67eea55031f632653b.png",
+            "smallImageURL": "https:\/\/img-1.fyyd.de\/pd\/small\/44980f2718c38e30e0b67eea55031f632653b.jpg",
+            "microImageURL": "https:\/\/img-1.fyyd.de\/pd\/micro\/44980f2718c38e30e0b67eea55031f632653b.png",
+            "language": "de",
+            "generator": "Podlove Podcast Publisher v4.5.6",
+            "categories": [
+                155,
+                160,
+                181
+            ],
+            "lastpub": "2026-09-19T12:33:32+02:00",
+            "rank": 640,
+            "url_fyyd": "https:\/\/fyyd.de\/podcast\/lage-der-nation\/0",
+            "description": "Jede Woche lassen Philip Banse und Ulf Buermeyer die politische Woche Revue passieren und kommentieren die Lage der Nation.",
+            "subtitle": "W\u00f6chentliche Analyse der politischen Ereignisse in Deutschland und der Welt - mit Philip Banse und Ulf Buermeyer",
+            "tcolor": "#fff",
+            "color": "#1c3b83",
+            "episode_count": 509,
+            "iflags": null,
+            "paymentURL": "https:\/\/plus.lagedernation.org\/",
+            "author": "Philip Banse & Ulf Buermeyer"
+        }
+    ]
+}
