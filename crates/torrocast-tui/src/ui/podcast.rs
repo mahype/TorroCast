@@ -18,7 +18,9 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
     let lang = app.lang;
     let podcast = view.podcast.as_deref();
     let title = podcast.map_or(view.reference.title.as_str(), |podcast| podcast.title.as_str());
-    let text_width = usize::from(area.width.saturating_sub(4));
+    let has_cover = app.settings.covers && app.covers.get(view.reference.artwork_url.as_deref()).is_some();
+    let beside = if has_cover { usize::from(crate::covers::SMALL.width) + 2 } else { 0 };
+    let text_width = usize::from(area.width.saturating_sub(4)).saturating_sub(beside);
 
     // Until the feed is here, the directory's words stand in.
     let author = podcast.and_then(|podcast| podcast.author.clone()).or_else(|| view.reference.author.clone());
@@ -91,12 +93,26 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
         }
     }
 
+    // With a cover beside it the text needs at least the cover's height.
+    let cover = app.covers.get(view.reference.artwork_url.as_deref()).filter(|_| app.settings.covers);
+    while cover.is_some() && lines.len() < usize::from(crate::covers::SMALL.height) {
+        lines.push(Line::default());
+    }
     let head_height = (lines.len() as u16 + 2).min(area.height.saturating_sub(6));
     let [head, list] = Layout::vertical([Constraint::Length(head_height), Constraint::Min(0)]).areas(area);
     let block = panel(&format!("{} › {}", lang.t("Discover"), fit(title, 40).trim_end()), false);
     let inner = block.inner(head);
     frame.render_widget(block, head);
-    frame.render_widget(Paragraph::new(lines), Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner });
+    let mut text = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
+    if let Some(cover) = cover {
+        let room = crate::covers::SMALL;
+        let picture =
+            Rect { x: text.x, y: text.y, width: room.width.min(text.width), height: room.height.min(text.height) };
+        frame.render_widget(ratatui_image::Image::new(&cover.small), picture);
+        text.x += room.width + 2;
+        text.width = text.width.saturating_sub(room.width + 2);
+    }
+    frame.render_widget(Paragraph::new(lines), text);
 
     draw_episodes(frame, list, app, view);
 }

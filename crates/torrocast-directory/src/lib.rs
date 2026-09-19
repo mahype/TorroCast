@@ -63,6 +63,7 @@ pub struct EpisodeRef {
     pub duration_ms: Option<u64>,
     pub published: Option<DateTime<Utc>>,
     pub description: Option<String>,
+    pub artwork_url: Option<String>,
 }
 
 /// One entry of a directory's category tree.

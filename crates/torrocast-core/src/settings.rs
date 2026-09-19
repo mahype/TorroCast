@@ -15,6 +15,8 @@ pub struct Settings {
     /// The folder the library lives in — inside Dropbox, Syncthing, a NAS mount,
     /// wherever it should be backed up and shared from. `None` is the default place.
     pub library_dir: Option<String>,
+    /// Whether podcast covers are shown. Off for terminals where they are more noise than picture.
+    pub covers: bool,
     /// Where downloaded episodes are kept. Never inside the library folder: audio is large and is not synced.
     pub download_dir: Option<String>,
     /// This device's name in the library. Made up once, then kept.
@@ -46,6 +48,7 @@ impl Default for Settings {
             country: "us".to_owned(),
             sources: Sources::default(),
             library_dir: None,
+            covers: true,
             download_dir: None,
             device_id: None,
         }
@@ -143,6 +146,19 @@ pub fn default_library_dir(platform: Platform, environment: &HashMap<String, Str
         Platform::Windows => variable("APPDATA")?.join("TorroCast"),
     };
     Some(directory.join("library"))
+}
+
+/// Where things are kept that can be fetched again: pictures.
+#[must_use]
+pub fn cache_dir(platform: Platform, environment: &HashMap<String, String>) -> Option<PathBuf> {
+    let variable = |name: &str| environment.get(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+    match platform {
+        Platform::Linux => {
+            Some(variable("XDG_CACHE_HOME").or_else(|| Some(variable("HOME")?.join(".cache")))?.join("torrocast"))
+        }
+        Platform::MacOs => Some(variable("HOME")?.join("Library").join("Caches").join("TorroCast")),
+        Platform::Windows => Some(variable("LOCALAPPDATA")?.join("TorroCast").join("cache")),
+    }
 }
 
 /// Where downloads go unless the user chose a folder: beside the library, not in it.

@@ -203,6 +203,7 @@ pub fn parse_episodes(answer: &Value) -> Vec<EpisodeRef> {
                     .and_then(|date| DateTime::parse_from_rfc3339(&date).ok())
                     .map(|date| date.with_timezone(&Utc)),
                 description: text(&entry["shortDescription"]).or_else(|| text(&entry["description"])),
+                artwork_url: text(&entry["artworkUrl600"]).or_else(|| text(&entry["artworkUrl160"])),
             })
         })
         .collect()

@@ -233,6 +233,7 @@ mod tests {
             chapters: Vec::new(),
             chapters_url: None,
             is_mp3: true,
+            artwork_url: None,
         }
     }
 

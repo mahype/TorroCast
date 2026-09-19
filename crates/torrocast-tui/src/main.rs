@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use ratatui::crossterm::execute;
 use torrocast_core::keeper::Keeper;
-use torrocast_core::settings::{Platform, config_file, default_download_dir, default_library_dir};
+use torrocast_core::settings::{Platform, cache_dir, config_file, default_download_dir, default_library_dir};
 use torrocast_core::{Core, OutputKind, Settings};
 use torrocast_net::HttpClient;
 use torrocast_tui::app::App;
@@ -72,6 +72,9 @@ fn main() -> std::io::Result<()> {
         .clone()
         .map(std::path::PathBuf::from)
         .or_else(|| default_download_dir(Platform::current(), &environment));
+    if let Some(directory) = cache_dir(Platform::current(), &environment) {
+        core.set_cache_directory(&directory);
+    }
     if let Some(directory) = &downloads {
         core.set_download_directory(directory);
     }
@@ -79,6 +82,12 @@ fn main() -> std::io::Result<()> {
     core.send(torrocast_core::Command::RefreshSubscriptions);
 
     let mut terminal = ratatui::init();
+    // What pictures the terminal can show is read from its environment and its size — see `covers::protocol_of`.
+    let window = ratatui::crossterm::terminal::window_size().ok();
+    let pixels = window.as_ref().map_or((0, 0), |window| (window.width, window.height));
+    let cells = window.as_ref().map_or((0, 0), |window| (window.columns, window.rows));
+    app.covers =
+        torrocast_tui::covers::Covers::new(Some(torrocast_tui::covers::picker_for(&environment, pixels, cells)));
     // The mouse is a convenience; a terminal that refuses it still works.
     let _ = execute!(stdout(), EnableMouseCapture);
     let mut refreshed = Instant::now();

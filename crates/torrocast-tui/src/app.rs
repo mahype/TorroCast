@@ -13,6 +13,7 @@ use torrocast_core::{
     merge_chapters, notes,
 };
 
+use crate::covers::Covers;
 use crate::i18n::Lang;
 
 /// Apple allows about twenty searches a minute; waiting for a pause in the
@@ -259,6 +260,7 @@ pub struct App {
     pub providers: Vec<ProviderId>,
     pub subscriptions: Vec<Subscription>,
     pub subscriptions_index: usize,
+    pub covers: Covers,
     pub downloads: Vec<Download>,
     pub downloads_index: usize,
     pub new_episodes: Vec<NewEpisode>,
@@ -333,6 +335,7 @@ impl App {
             providers,
             subscriptions: Vec::new(),
             subscriptions_index: 0,
+            covers: Covers::default(),
             downloads: Vec::new(),
             downloads_index: 0,
             new_episodes: Vec::new(),
@@ -476,6 +479,8 @@ impl App {
                     self.levels.clear();
                     self.player_open = false;
                 }
+                let artwork = state.now.as_ref().and_then(|now| now.item.artwork_url.clone());
+                self.want_cover(artwork.as_deref());
                 self.up_next_index = self.up_next_index.min(state.up_next.len().saturating_sub(1));
                 self.playback = *state;
             }
@@ -494,6 +499,11 @@ impl App {
                 if self.index_state == IndexState::Rejected {
                     self.settings.sources.podcast_index = false;
                     self.settings_changed = true;
+                }
+            }
+            Event::Cover { url, bytes } => {
+                if let Some(bytes) = bytes {
+                    self.covers.arrived(&url, &bytes);
                 }
             }
             Event::Downloads(downloads) => {
@@ -540,9 +550,13 @@ impl App {
             },
             Event::Feed { request, outcome } => {
                 let mut wanted = None;
+                let mut cover = None;
                 if let Some(view) = self.podcast.as_mut().filter(|view| view.request == request) {
                     match outcome {
                         Ok(podcast) => {
+                            // The directory's picture if it gave one; the feed's own otherwise.
+                            cover = view.reference.artwork_url.clone().or_else(|| podcast.image.clone());
+                            view.reference.artwork_url.clone_from(&cover);
                             view.podcast = Some(podcast);
                             view.load = Load::Ready;
                             view.index = 0;
@@ -551,6 +565,7 @@ impl App {
                         Err(problem) => view.load = Load::Failed(problem),
                     }
                 }
+                self.want_cover(cover.as_deref());
                 // Came here for one episode: go straight on to it.
                 if let (Some(guid), Some(view)) = (wanted, self.podcast.as_mut()) {
                     let position = view.visible().iter().position(|position| {
@@ -612,6 +627,15 @@ impl App {
         None
     }
 
+    /// Asks for a picture, unless covers are off, it is known, or there is none.
+    fn want_cover(&mut self, url: Option<&str>) {
+        if let Some(url) = url.filter(|_| self.settings.covers)
+            && self.covers.want(url)
+        {
+            self.commands.push(Command::Cover { url: url.to_owned() });
+        }
+    }
+
     fn open_podcast(&mut self, reference: PodcastRef) {
         let Some(feed_url) = reference.feed_url.clone() else {
             self.notice = Some(
@@ -622,6 +646,7 @@ impl App {
             return;
         };
         let request = self.next_request();
+        self.want_cover(reference.artwork_url.as_deref());
         self.commands.push(Command::OpenFeed { request, feed_url, reload: false });
         self.podcast = Some(PodcastView {
             reference,
@@ -1143,8 +1168,8 @@ impl App {
         }
     }
 
-    /// The rows of the settings: 0 Apple, 1 Podcast Index, 2 fyyd, 3 country, 4 library folder.
-    pub const SETTINGS_ROWS: usize = 5;
+    /// The rows of the settings: 0 Apple, 1 Podcast Index, 2 fyyd, 3 country, 4 library folder, 5 covers.
+    pub const SETTINGS_ROWS: usize = 6;
 
     fn on_settings_key(&mut self, code: KeyCode) {
         match (self.settings_index, code) {
@@ -1154,6 +1179,10 @@ impl App {
             }
             (3, KeyCode::Char(' ') | KeyCode::Enter | KeyCode::Right | KeyCode::Char('l')) => self.cycle_country(1),
             (3, KeyCode::Left | KeyCode::Char('h')) => self.cycle_country(-1),
+            (5, KeyCode::Enter | KeyCode::Char(' ')) => {
+                self.settings.covers = !self.settings.covers;
+                self.settings_changed = true;
+            }
             (4, KeyCode::Enter) => {
                 self.settings_input = Some((Field::Library, self.library.clone().unwrap_or_default()))
             }

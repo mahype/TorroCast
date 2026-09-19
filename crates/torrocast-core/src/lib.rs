@@ -105,6 +105,10 @@ pub enum Command {
         mp3_url: Option<String>,
     },
     Transport(Transport),
+    /// Fetches a picture — a podcast's cover. Kept on disk once fetched.
+    Cover {
+        url: String,
+    },
     /// Keeps an episode on this machine, to be heard without a network.
     Download(QueueItem),
     /// Deletes a downloaded episode, by its library id.
@@ -194,6 +198,11 @@ pub enum Event {
         pending: usize,
         failed: usize,
     },
+    /// A picture asked for with [`Command::Cover`]; `None` if it could not be had.
+    Cover {
+        url: String,
+        bytes: Option<Arc<Vec<u8>>>,
+    },
     /// Every download, the newest last — whenever one starts, moves on, ends or is deleted.
     Downloads(Vec<Download>),
     /// Whether Podcast Index accepted the user's key. `Refused(401)` is a wrong key.
@@ -217,6 +226,8 @@ struct Shared {
     /// Present while the user has switched it on and given a key.
     podcast_index: RwLock<Option<PodcastIndex>>,
     feeds: Mutex<HashMap<String, Arc<Podcast>>>,
+    /// Where fetched pictures are kept between runs, if anywhere.
+    covers: RwLock<Option<std::path::PathBuf>>,
 }
 
 fn podcast_index(settings: &Settings) -> Option<PodcastIndex> {
@@ -267,6 +278,7 @@ impl Core {
             fyyd: Fyyd,
             podcast_index: RwLock::new(podcast_index(&settings)),
             feeds: Mutex::new(HashMap::new()),
+            covers: RwLock::new(None),
         };
         let core = Self {
             shared: Arc::new(shared),
@@ -290,6 +302,13 @@ impl Core {
         }
         core.publish();
         (core, receiver)
+    }
+
+    /// Says where pictures may be cached.
+    pub fn set_cache_directory(&mut self, directory: &std::path::Path) {
+        if let Ok(mut covers) = self.shared.covers.write() {
+            *covers = Some(directory.join("covers"));
+        }
     }
 
     /// Says where downloads are kept; what is already there is reported at once.
@@ -349,6 +368,10 @@ impl Core {
             }),
             Command::Transport(transport) => self.transport(transport),
             Command::RefreshSubscriptions => self.refresh(),
+            Command::Cover { url } => self.spawn(move |shared| {
+                let bytes = cover(shared, &url).map(Arc::new);
+                Event::Cover { url, bytes }
+            }),
             Command::Download(item) => {
                 if let Some(downloads) = &mut self.downloads {
                     downloads.start(item, Arc::clone(&self.shared.fetch));
@@ -660,6 +683,26 @@ fn open_feed(shared: &Shared, feed_url: &str, reload: bool) -> Result<Arc<Podcas
     Ok(podcast)
 }
 
+/// A picture, from the disk if it was fetched before.
+fn cover(shared: &Shared, url: &str) -> Option<Vec<u8>> {
+    // Covers of several megabytes exist; they are of no use to a terminal and not worth keeping.
+    const LARGEST: usize = 12 * 1024 * 1024;
+    let file = shared.covers.read().ok()?.as_ref().map(|directory| {
+        let name: String =
+            torrocast_library::episode_id(url).chars().filter(|character| character.is_ascii_alphanumeric()).collect();
+        directory.join(name)
+    });
+    if let Some(known) = file.as_ref().and_then(|file| std::fs::read(file).ok()) {
+        return Some(known);
+    }
+    let bytes = shared.fetch.get(url).ok().filter(|bytes| bytes.len() <= LARGEST)?;
+    if let Some(file) = &file {
+        let _ = file.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(file, &bytes);
+    }
+    Some(bytes)
+}
+
 /// Chapters from outside the feed: the JSON file first, the head of the MP3 otherwise.
 fn find_chapters(fetch: &dyn Fetch, chapters_url: Option<String>, mp3_url: Option<String>) -> Vec<Chapter> {
     let found = chapters_url
@@ -687,6 +730,7 @@ impl QueueItem {
             chapters: episode.chapters.clone(),
             chapters_url: episode.chapters_url.clone(),
             is_mp3: enclosure.is_mp3(),
+            artwork_url: episode.image.clone().or_else(|| podcast.image.clone()),
         })
     }
 
@@ -704,6 +748,7 @@ impl QueueItem {
             chapters: Vec::new(),
             chapters_url: None,
             is_mp3: path.ends_with(".mp3"),
+            artwork_url: episode.artwork_url.clone(),
         }
     }
 }

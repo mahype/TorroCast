@@ -162,6 +162,14 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
             );
         }
     }
+    lines.push(Line::default());
+    let chosen = app.settings_index == 5;
+    let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
+    let covers = lang.t(if app.settings.covers { "on" } else { "off" });
+    lines.push(Line::from(vec![
+        Span::styled(format!(" {:<34}", lang.t("Podcast covers")), background.fg(theme::MUTED)),
+        Span::styled(fit(covers, width.saturating_sub(35)), if chosen { theme::selected() } else { Style::new() }),
+    ]));
     if let Some(notice) = &app.notice {
         lines.push(Line::default());
         lines.extend(

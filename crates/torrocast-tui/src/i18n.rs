@@ -102,6 +102,8 @@ const GERMAN: &[(&str, &str)] = &[
     ("Width", "Breite"),
     ("Height", "Höhe"),
     ("Make the window larger — TorroCast keeps running.", "Zieh das Fenster größer – TorroCast läuft weiter."),
+    ("Podcast covers", "Cover-Bilder"),
+    ("on", "an"),
     // downloads
     ("Downloads", "Downloads"),
     ("download", "Laden"),

@@ -30,6 +30,7 @@ impl From<&QueueItem> for StoredItem {
             duration_ms: item.duration_ms,
             chapters_url: item.chapters_url.clone(),
             is_mp3: item.is_mp3,
+            artwork_url: item.artwork_url.clone(),
         }
     }
 }
@@ -47,6 +48,7 @@ impl From<StoredItem> for QueueItem {
             chapters: Vec::new(),
             chapters_url: item.chapters_url,
             is_mp3: item.is_mp3,
+            artwork_url: item.artwork_url,
         }
     }
 }
@@ -267,6 +269,7 @@ mod tests {
             chapters: Vec::new(),
             chapters_url: Some(format!("https://show.example/{name}.json")),
             is_mp3: true,
+            artwork_url: None,
         }
     }
 

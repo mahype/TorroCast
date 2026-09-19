@@ -8,7 +8,7 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [ ] Podcast Index: Trending als eigener Reiter; Schlüssel im Schlüsselbund des Systems statt in der `config.toml`
 - [x] Downloads: Folgen laden (`D`), von der Platte abspielen, Download-Ansicht, löschen
 - [ ] Downloads: laufenden Download abbrechen; automatisch laden und aufräumen; Download-Ordner in der Oberfläche wählen (bisher `download_dir` in der `config.toml`)
-- [ ] Cover-Bilder im Podcast-Kopf und im großen Player
+- [x] Cover-Bilder im Podcast-Kopf und im großen Player (Kitty, Sixel, iTerm2 nach Terminal, sonst Halbblöcke; abschaltbar; Platten-Cache). In tmux als Halbblöcke geprüft – **Sixel in foot und Kitty-Grafik noch von niemandem angesehen**
 - [ ] Medientasten und Systemintegration (MPRIS, Now Playing, SMTC)
 - [ ] Mehrere Playlists
 - [ ] Bibliotheks-Ordner: verdichtete Schnappschüsse, alte Journale entfernen

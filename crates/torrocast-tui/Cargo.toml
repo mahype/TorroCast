@@ -16,6 +16,8 @@ chrono.workspace = true
 ratatui = "0.30"
 unicode-width = "0.2"
 torrocast-net = { path = "../torrocast-net" }
+ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
 [dev-dependencies]
 torrocast-feed = { path = "../torrocast-feed" }

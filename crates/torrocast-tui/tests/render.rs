@@ -263,6 +263,7 @@ fn item(title: &str) -> QueueItem {
         chapters: Vec::new(),
         chapters_url: None,
         is_mp3: true,
+        artwork_url: None,
     }
 }
 
@@ -676,4 +677,55 @@ fn episodes_are_downloaded_played_from_disk_and_deleted() {
     assert!(matches!(transports(&mut app).as_slice(), [Transport::PlayNow(item)] if item.title == "Fertig"));
     press(&mut app, KeyCode::Char('d'));
     assert_eq!(app.commands.pop(), Some(Command::DeleteDownload(item("Fertig").library_id())));
+}
+
+// ── covers ───────────────────────────────────────────────────────────────────
+
+/// Twelve bands, red and blue in turn. Drawn six cells high, every cell holds one of each —
+/// so every cell is a half block, which a test can see.
+fn striped_png() -> Vec<u8> {
+    let picture = image::RgbImage::from_fn(120, 120, |_, y| {
+        if (y / 10) % 2 == 0 { image::Rgb([200, 30, 30]) } else { image::Rgb([30, 30, 200]) }
+    });
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgb8(picture).write_to(&mut bytes, image::ImageFormat::Png).expect("encodes in memory");
+    bytes.into_inner()
+}
+
+#[test]
+fn a_cover_is_fetched_once_and_drawn_beside_the_description() {
+    use torrocast_tui::covers::Covers;
+
+    let mut app = app();
+    // Half blocks work in any terminal, and in a test.
+    app.covers = Covers::new(Some(ratatui_image::picker::Picker::halfblocks()));
+    let mut found = show("Beispielsendung", Some("https://beispiel.example/feed.xml"));
+    found.artwork_url = Some("https://img.example/cover.png".into());
+    searched(&mut app, vec![found]);
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Enter);
+    let asked: Vec<&Command> = app.commands.iter().filter(|command| matches!(command, Command::Cover { .. })).collect();
+    assert_eq!(asked, vec![&Command::Cover { url: "https://img.example/cover.png".into() }]);
+
+    let before = screen(&app, 104, 28);
+    app.on_event(Event::Cover { url: "https://img.example/cover.png".into(), bytes: Some(Arc::new(striped_png())) });
+    let after = screen(&app, 104, 28);
+    assert!(!before.contains('▀') && after.contains('▀'), "the picture appears once it is here");
+    let title_row = after.lines().find(|line| line.contains("Anna Beispiel")).expect("the author is shown");
+    assert!(title_row.find("Anna").expect("found") > 40, "the text makes room for the cover");
+
+    // Switched off in the settings, nothing is drawn and nothing fetched.
+    app.settings.covers = false;
+    assert!(!screen(&app, 104, 28).contains('▀'));
+}
+
+#[test]
+fn without_a_picker_no_cover_is_even_asked_for() {
+    let mut app = app();
+    let mut found = show("Beispielsendung", Some("https://beispiel.example/feed.xml"));
+    found.artwork_url = Some("https://img.example/cover.png".into());
+    searched(&mut app, vec![found]);
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Enter);
+    assert!(app.commands.iter().all(|command| !matches!(command, Command::Cover { .. })));
 }

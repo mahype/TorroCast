@@ -29,6 +29,8 @@ pub struct QueueItem {
     /// Where further chapters may be found once the episode plays.
     pub chapters_url: Option<String>,
     pub is_mp3: bool,
+    /// The episode's own picture, or its podcast's.
+    pub artwork_url: Option<String>,
 }
 
 impl QueueItem {
@@ -467,6 +469,7 @@ mod tests {
             chapters: Vec::new(),
             chapters_url: None,
             is_mp3: false,
+            artwork_url: None,
         }
     }
 

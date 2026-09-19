@@ -82,6 +82,7 @@ fn two_devices_never_write_the_same_file_and_still_agree() {
         duration_ms: None,
         chapters_url: None,
         is_mp3: true,
+        artwork_url: None,
     };
     desktop
         .record(Change::QueueItemSet { playlist: UP_NEXT.into(), episode: "e9".into(), sort: 0.0, item }, 3_000)

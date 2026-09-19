@@ -163,7 +163,15 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, now: &NowPlaying) {
     let block = panel(lang.t("Now playing"), false);
     let inner = block.inner(head);
     frame.render_widget(block, head);
-    let inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
+    let mut inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
+    if let Some(cover) = app.covers.get(now.item.artwork_url.as_deref()).filter(|_| app.settings.covers) {
+        let room = crate::covers::LARGE;
+        let picture =
+            Rect { x: inner.x, y: inner.y, width: room.width.min(inner.width), height: room.height.min(inner.height) };
+        frame.render_widget(ratatui_image::Image::new(&cover.large), picture);
+        inner.x += room.width + 2;
+        inner.width = inner.width.saturating_sub(room.width + 2);
+    }
     let width = usize::from(inner.width);
 
     let (mark, mark_style) = status_mark(now);

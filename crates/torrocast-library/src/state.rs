@@ -25,6 +25,8 @@ pub struct StoredItem {
     pub chapters_url: Option<String>,
     #[serde(default)]
     pub is_mp3: bool,
+    #[serde(default)]
+    pub artwork_url: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -175,6 +177,7 @@ mod tests {
             duration_ms: None,
             chapters_url: None,
             is_mp3: true,
+            artwork_url: None,
         }
     }
 

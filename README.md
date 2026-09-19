@@ -43,6 +43,8 @@ following `LANG`. An address typed into the search field is opened as a feed.
 - **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,
   search results included. When an episode ends the next one starts. `J` `K` reorder,
   `d` removes, `C` empties.
+- **Covers** beside the podcast's description and in the large player: a real picture where
+  the terminal can show one (Kitty, Sixel, iTerm2), half blocks elsewhere; off in Settings.
 - **Downloads:** `D` keeps an episode on this machine; it is then played from disk. The
   folder is its own index — audio plus a small JSON description per episode.
 - **Subscriptions:** `s` on a podcast subscribes; they are listed under their own menu entry.
@@ -56,7 +58,7 @@ following `LANG`. An address typed into the search field is opened as a feed.
   playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not yet: cover art, media keys, several playlists, Opus and HE-AAC audio.
+Not yet: media keys, several playlists, Opus and HE-AAC audio.
 
 ## Layout
 
