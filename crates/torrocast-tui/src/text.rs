@@ -37,11 +37,7 @@ pub fn fit(text: &str, width: usize) -> String {
 #[must_use]
 pub fn duration(seconds: u32) -> String {
     let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{seconds:02}")
-    } else {
-        format!("{minutes}:{seconds:02}")
-    }
+    if hours > 0 { format!("{hours}:{minutes:02}:{seconds:02}") } else { format!("{minutes}:{seconds:02}") }
 }
 
 /// A chapter's start: always with hours, so a column of them lines up.
@@ -94,11 +90,7 @@ fn words(inlines: &[Inline], base: Style) -> Vec<Word> {
             if piece.is_empty() {
                 continue;
             }
-            words.push(Word {
-                text: piece.to_owned(),
-                style,
-                spaced: *spaced,
-            });
+            words.push(Word { text: piece.to_owned(), style, spaced: *spaced });
             *spaced = false;
         }
     };
@@ -108,11 +100,7 @@ fn words(inlines: &[Inline], base: Style) -> Vec<Word> {
             Inline::Link { text, target } => {
                 push(text, theme::link(), &mut spaced);
                 spaced = true;
-                push(
-                    &format!("[{}]", target + 1),
-                    theme::link().add_modifier(Modifier::BOLD),
-                    &mut spaced,
-                );
+                push(&format!("[{}]", target + 1), theme::link().add_modifier(Modifier::BOLD), &mut spaced);
             }
         }
     }
@@ -211,10 +199,7 @@ mod tests {
 
     #[test]
     fn wrapping_breaks_at_words() {
-        assert_eq!(
-            wrap("Jede Woche Politik aus Berlin", 12),
-            vec!["Jede Woche", "Politik aus", "Berlin"]
-        );
+        assert_eq!(wrap("Jede Woche Politik aus Berlin", 12), vec!["Jede Woche", "Politik aus", "Berlin"]);
     }
 
     #[test]

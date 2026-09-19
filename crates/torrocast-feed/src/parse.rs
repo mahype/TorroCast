@@ -52,11 +52,7 @@ fn child<'a, 'input>(node: Node<'a, 'input>, wanted: Vocabulary, name: &'static 
 
 /// All text below `node`, CDATA included, or `None` when that is nothing.
 fn content(node: Node<'_, '_>) -> Option<String> {
-    let text: String = node
-        .descendants()
-        .filter(Node::is_text)
-        .filter_map(|text| text.text())
-        .collect();
+    let text: String = node.descendants().filter(Node::is_text).filter_map(|text| text.text()).collect();
     let trimmed = text.trim();
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
@@ -72,18 +68,12 @@ fn label(node: Node<'_, '_>, wanted: Vocabulary, name: &'static str) -> Option<S
 }
 
 fn attribute(node: Node<'_, '_>, name: &str) -> Option<String> {
-    node.attribute(name)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned)
+    node.attribute(name).map(str::trim).filter(|value| !value.is_empty()).map(str::to_owned)
 }
 
 pub fn parse_feed(xml: &str) -> Result<Podcast, FeedError> {
     let xml = xml.trim_start_matches('\u{feff}').trim_start();
-    let options = ParsingOptions {
-        allow_dtd: true,
-        ..ParsingOptions::default()
-    };
+    let options = ParsingOptions { allow_dtd: true, ..ParsingOptions::default() };
     match Document::parse_with_options(xml, options) {
         Ok(document) => read(&document),
         Err(first) => {
@@ -130,12 +120,7 @@ fn read(document: &Document<'_>) -> Result<Podcast, FeedError> {
         categories,
         explicit: text(channel, Vocabulary::Itunes, "explicit").is_some_and(|value| is_yes(&value)),
         funding: children(channel, Vocabulary::Podcast, "funding")
-            .filter_map(|funding| {
-                Some(Funding {
-                    url: attribute(funding, "url")?,
-                    label: content(funding),
-                })
-            })
+            .filter_map(|funding| Some(Funding { url: attribute(funding, "url")?, label: content(funding) }))
             .collect(),
         persons: persons(channel),
         guid: text(channel, Vocabulary::Podcast, "guid"),
@@ -151,19 +136,14 @@ fn is_yes(value: &str) -> bool {
 fn persons(node: Node<'_, '_>) -> Vec<Person> {
     children(node, Vocabulary::Podcast, "person")
         .filter_map(|person| {
-            Some(Person {
-                name: content(person)?,
-                role: attribute(person, "role"),
-                url: attribute(person, "href"),
-            })
+            Some(Person { name: content(person)?, role: attribute(person, "role"), url: attribute(person, "href") })
         })
         .collect()
 }
 
 fn episode(item: Node<'_, '_>) -> Episode {
-    let title = label(item, Vocabulary::Rss, "title")
-        .or_else(|| label(item, Vocabulary::Itunes, "title"))
-        .unwrap_or_default();
+    let title =
+        label(item, Vocabulary::Rss, "title").or_else(|| label(item, Vocabulary::Itunes, "title")).unwrap_or_default();
     // The richest text wins: content:encoded is the full notes, description often a teaser.
     let notes_html = text(item, Vocabulary::Content, "encoded")
         .or_else(|| text(item, Vocabulary::Rss, "description"))
@@ -172,9 +152,7 @@ fn episode(item: Node<'_, '_>) -> Episode {
         Some(Enclosure {
             url: attribute(enclosure, "url")?,
             mime: attribute(enclosure, "type"),
-            bytes: attribute(enclosure, "length")
-                .and_then(|length| length.parse().ok())
-                .filter(|bytes| *bytes > 0),
+            bytes: attribute(enclosure, "length").and_then(|length| length.parse().ok()).filter(|bytes| *bytes > 0),
         })
     });
     let chapters = child(item, Vocabulary::Podlove, "chapters")
@@ -209,10 +187,7 @@ fn episode(item: Node<'_, '_>) -> Episode {
         chapters_url: child(item, Vocabulary::Podcast, "chapters").and_then(|chapters| attribute(chapters, "url")),
         transcripts: children(item, Vocabulary::Podcast, "transcript")
             .filter_map(|transcript| {
-                Some(Transcript {
-                    url: attribute(transcript, "url")?,
-                    mime: attribute(transcript, "type"),
-                })
+                Some(Transcript { url: attribute(transcript, "url")?, mime: attribute(transcript, "type") })
             })
             .collect(),
         persons: persons(item),
@@ -256,16 +231,9 @@ mod tests {
     fn dates_in_both_standards() {
         let expected = "2026-09-19T10:33:00+00:00";
         assert_eq!(
-            parse_date("Sat, 19 Sep 2026 12:33:00 +0200")
-                .map(|date| date.to_rfc3339())
-                .as_deref(),
+            parse_date("Sat, 19 Sep 2026 12:33:00 +0200").map(|date| date.to_rfc3339()).as_deref(),
             Some(expected)
         );
-        assert_eq!(
-            parse_date("2026-09-19T10:33:00Z")
-                .map(|date| date.to_rfc3339())
-                .as_deref(),
-            Some(expected)
-        );
+        assert_eq!(parse_date("2026-09-19T10:33:00Z").map(|date| date.to_rfc3339()).as_deref(), Some(expected));
     }
 }

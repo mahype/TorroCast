@@ -71,9 +71,7 @@ struct JsonChapter {
 }
 
 fn filled(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_owned())
-        .filter(|value| !value.is_empty())
+    value.map(|value| value.trim().to_owned()).filter(|value| !value.is_empty())
 }
 
 /// `application/json+chapters`, version 1.x.
@@ -104,9 +102,7 @@ pub fn id3_tag_size(head: &[u8]) -> Option<u64> {
     if &header[..3] != b"ID3" || header[6..].iter().any(|byte| byte & 0x80 != 0) {
         return None;
     }
-    let size = header[6..]
-        .iter()
-        .fold(0u64, |size, byte| (size << 7) | u64::from(*byte));
+    let size = header[6..].iter().fold(0u64, |size, byte| (size << 7) | u64::from(*byte));
     let footer = if header[5] & 0x10 != 0 { 10 } else { 0 };
     Some(10 + size + footer)
 }
@@ -167,22 +163,12 @@ pub fn merge(fallback: Vec<Chapter>, preferred: Vec<Chapter>) -> Vec<Chapter> {
         return preferred;
     }
     if fallback.len() != preferred.len() {
-        return if fallback.len() > preferred.len() {
-            fallback
-        } else {
-            preferred
-        };
+        return if fallback.len() > preferred.len() { fallback } else { preferred };
     }
-    let agree = fallback
-        .iter()
-        .zip(&preferred)
-        .all(|(left, right)| left.start_ms.abs_diff(right.start_ms) <= TOLERANCE_MS);
+    let agree =
+        fallback.iter().zip(&preferred).all(|(left, right)| left.start_ms.abs_diff(right.start_ms) <= TOLERANCE_MS);
     if !agree {
-        return if richness(&fallback) > richness(&preferred) {
-            fallback
-        } else {
-            preferred
-        };
+        return if richness(&fallback) > richness(&preferred) { fallback } else { preferred };
     }
     preferred
         .into_iter()
@@ -217,10 +203,7 @@ mod tests {
             {"startTime":0,"title":"Intro"},
             {"startTime":120,"img":"https://example.org/a.jpg","toc":false}]}"#;
         let chapters = parse_json(body).expect("valid chapters");
-        assert_eq!(
-            chapters.iter().map(|chapter| chapter.start_ms).collect::<Vec<_>>(),
-            vec![0, 94_500, 120_000]
-        );
+        assert_eq!(chapters.iter().map(|chapter| chapter.start_ms).collect::<Vec<_>>(), vec![0, 94_500, 120_000]);
         assert_eq!(chapters[1].url.as_deref(), Some("https://example.org"));
         assert!(chapters[2].hidden && chapters[2].title.is_none());
     }
@@ -228,16 +211,8 @@ mod tests {
     #[test]
     fn tag_size_is_syncsafe() {
         assert_eq!(id3_tag_size(b"ID3\x04\x00\x00\x00\x00\x02\x01"), Some(10 + 257));
-        assert_eq!(
-            id3_tag_size(b"ID3\x04\x00\x10\x00\x00\x02\x01"),
-            Some(10 + 257 + 10),
-            "a footer counts"
-        );
-        assert_eq!(
-            id3_tag_size(b"\xff\xfb\x90\x00\x00\x00\x00\x00\x00\x00"),
-            None,
-            "audio without a tag"
-        );
+        assert_eq!(id3_tag_size(b"ID3\x04\x00\x10\x00\x00\x02\x01"), Some(10 + 257 + 10), "a footer counts");
+        assert_eq!(id3_tag_size(b"\xff\xfb\x90\x00\x00\x00\x00\x00\x00\x00"), None, "audio without a tag");
         assert_eq!(id3_tag_size(b"ID3"), None);
     }
 
@@ -254,12 +229,7 @@ mod tests {
 
     #[test]
     fn agreeing_lists_fill_each_other() {
-        let feed = vec![chapter(
-            0,
-            Some("Intro"),
-            Some("https://example.org"),
-            ChapterSource::Feed,
-        )];
+        let feed = vec![chapter(0, Some("Intro"), Some("https://example.org"), ChapterSource::Feed)];
         let json = vec![chapter(400, Some("Begrüßung"), None, ChapterSource::Json)];
         let merged = merge(feed, json);
         assert_eq!(merged[0].title.as_deref(), Some("Begrüßung"));

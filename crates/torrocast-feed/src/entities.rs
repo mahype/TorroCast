@@ -49,10 +49,7 @@ const NAMED: &[(&str, char)] = &[
 const XML: [&str; 5] = ["amp", "lt", "gt", "quot", "apos"];
 
 fn named(name: &str) -> Option<char> {
-    NAMED
-        .iter()
-        .find(|(known, _)| *known == name)
-        .map(|(_, character)| *character)
+    NAMED.iter().find(|(known, _)| *known == name).map(|(_, character)| *character)
 }
 
 fn numeric(reference: &str) -> Option<char> {
@@ -132,17 +129,11 @@ mod tests {
 
     #[test]
     fn decodes_names_and_numbers() {
-        assert_eq!(
-            decode("Caf&eacute; &amp; Bar &#8211; &#x2014; R&D"),
-            "Café & Bar – — R&D"
-        );
+        assert_eq!(decode("Caf&eacute; &amp; Bar &#8211; &#x2014; R&D"), "Café & Bar – — R&D");
     }
 
     #[test]
     fn repairs_only_what_xml_would_reject() {
-        assert_eq!(
-            repair_xml("a &amp; b&nbsp;c & d &#228; &bogus;"),
-            "a &amp; b&#160;c &amp; d &#228; &amp;bogus;"
-        );
+        assert_eq!(repair_xml("a &amp; b&nbsp;c & d &#228; &bogus;"), "a &amp; b&#160;c &amp; d &#228; &amp;bogus;");
     }
 }

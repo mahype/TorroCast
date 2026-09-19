@@ -21,14 +21,7 @@ struct Source {
 
 pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let lang = app.lang;
-    let block = panel(
-        &format!(
-            "{} › {}",
-            lang.t("Settings"),
-            lang.t("Where TorroCast looks for podcasts")
-        ),
-        true,
-    );
+    let block = panel(&format!("{} › {}", lang.t("Settings"), lang.t("Where TorroCast looks for podcasts")), true);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let width = usize::from(inner.width);
@@ -49,53 +42,31 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
             mark: ("○", theme::faint()),
             state: ("Comes with a later version", theme::faint()),
         },
-        Source {
-            name: "fyyd",
-            about: "German-language directory. Needs no setup.",
-            mark: fyyd.0,
-            state: fyyd.1,
-        },
+        Source { name: "fyyd", about: "German-language directory. Needs no setup.", mark: fyyd.0, state: fyyd.1 },
     ];
 
     let mut lines = vec![Line::default()];
     for (index, source) in sources.iter().enumerate() {
         let chosen = index == app.settings_index;
-        let background = if chosen {
-            Style::new().bg(theme::SELECTION)
-        } else {
-            Style::new()
-        };
+        let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
         let state = lang.t(source.state.0);
         let name_width = width.saturating_sub(state.chars().count() + 7);
         lines.push(Line::from(vec![
             Span::styled(format!(" {}  ", source.mark.0), source.mark.1.patch(background)),
-            Span::styled(
-                fit(source.name, name_width),
-                if chosen { theme::selected() } else { theme::bold() },
-            ),
+            Span::styled(fit(source.name, name_width), if chosen { theme::selected() } else { theme::bold() }),
             Span::styled(format!(" {state}  "), source.state.1.patch(background)),
         ]));
-        lines.push(Line::styled(
-            fit(&format!("    {}", lang.t(source.about)), width),
-            background.fg(theme::MUTED),
-        ));
+        lines.push(Line::styled(fit(&format!("    {}", lang.t(source.about)), width), background.fg(theme::MUTED)));
         lines.push(Line::default());
     }
 
     let chosen = app.settings_index == 3;
     let label = lang.t("Country for search and charts");
     let country = format!("‹ {} ›", lang.country(&app.settings.country));
-    let background = if chosen {
-        Style::new().bg(theme::SELECTION)
-    } else {
-        Style::new()
-    };
+    let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
     lines.push(Line::from(vec![
         Span::styled(format!(" {label:<34}"), background.fg(theme::MUTED)),
-        Span::styled(
-            fit(&country, width.saturating_sub(35)),
-            if chosen { theme::selected() } else { Style::new() },
-        ),
+        Span::styled(fit(&country, width.saturating_sub(35)), if chosen { theme::selected() } else { Style::new() }),
     ]));
     if let Some(notice) = &app.notice {
         lines.push(Line::default());

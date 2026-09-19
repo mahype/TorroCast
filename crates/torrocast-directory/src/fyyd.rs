@@ -16,10 +16,7 @@ impl DirectoryProvider for Fyyd {
     }
 
     fn search(&self, fetch: &dyn Fetch, query: &str, _country: &str) -> Result<Vec<PodcastRef>, DirectoryError> {
-        let url = format!(
-            "https://api.fyyd.de/0.2/search/podcast?count=30&title={}",
-            encode(query)
-        );
+        let url = format!("https://api.fyyd.de/0.2/search/podcast?count=30&title={}", encode(query));
         Ok(parse_search(&json(&fetch.get(&url)?)?))
     }
 }
@@ -37,9 +34,7 @@ pub fn parse_search(answer: &Value) -> Vec<PodcastRef> {
                 author: text(&show["author"]),
                 feed_url: text(&show["xmlURL"]),
                 artwork_url: text(&show["layoutImageURL"]).or_else(|| text(&show["imgURL"])),
-                episode_count: show["episode_count"]
-                    .as_u64()
-                    .and_then(|count| u32::try_from(count).ok()),
+                episode_count: show["episode_count"].as_u64().and_then(|count| u32::try_from(count).ok()),
                 last_published: text(&show["lastpub"])
                     .and_then(|date| DateTime::parse_from_rfc3339(&date).ok())
                     .map(|date| date.with_timezone(&Utc)),

@@ -2,8 +2,10 @@
 
 A podcast player with a portable core and a terminal UI.
 
-**Status: v0.1 — find and read.** Search podcasts, browse charts and categories, open
-a podcast, read show notes and chapters. No playback yet; that is v0.2.
+**Status: v0.2 in progress — find, read and listen.** Search podcasts and single
+episodes, browse charts and categories, read show notes and chapters, and play: streaming,
+tempo at the same pitch, chapter jumps, and an Up Next queue after the model of Pocket
+Casts. Subscriptions and the synced library folder come next.
 
 ## Run it
 
@@ -11,15 +13,18 @@ a podcast, read show notes and chapters. No playback yet; that is v0.2.
 cargo run --release
 ```
 
-Needs Rust 1.88 or newer and a terminal of at least 80 × 24. Linux, macOS and Windows.
-Type to search, `enter` opens, `esc` goes back, `?` lists every key. The interface
-speaks German or English, following `LANG`. An address typed into the search field is
-opened as a feed.
+Needs Rust 1.88 or newer and a terminal of at least 80 × 24. Linux (with the ALSA
+headers, `alsa-lib` / `libasound2-dev`), macOS and Windows. Type to search, `enter`
+opens, `esc` goes back, `?` lists every key. The interface speaks German or English,
+following `LANG`. An address typed into the search field is opened as a feed.
 
-## What v0.1 does
+`TORROCAST_OUTPUT=muted` plays without touching the sound card.
 
-- **Search** Apple's podcast directory, optionally fyyd as well (Settings). Results of
-  several directories arrive as they come and are folded into one list.
+## What it does
+
+- **Search** Apple's podcast directory for shows or, with `e`, for single episodes;
+  optionally fyyd as well (Settings). Results of several directories arrive as they come
+  and are folded into one list.
 - **Charts** by country and **categories** with their own charts.
 - **Podcast:** description, categories, website, support link, the episode list with
   date, length and marks for chapters and transcripts; filter with `/`, reverse with `o`.
@@ -27,10 +32,18 @@ opened as a feed.
   them), and chapters from all three places they can live: the feed (Podlove), the
   `podcast:chapters` file, and the ID3 tag at the head of the MP3 — read with two small
   range requests, never by downloading the episode.
+- **Playback:** `p` plays the selected episode, streaming while it downloads. `space`
+  pauses, `,` `.` jump by chapter, `b` `f` by 30 seconds, `-` `+` change the tempo without
+  changing the pitch, `n` goes to the next episode, `x` stops and remembers the place.
+  The player sits under the menu on every screen, with a level meter and clickable
+  buttons; `0` opens the large player with the chapter list.
+- **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,
+  search results included. When an episode ends the next one starts. `J` `K` reorder,
+  `d` removes, `C` empties.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not in v0.1: playback, subscriptions, the synced library folder, cover art, Podcast
-Index (it will need your own free key).
+Not yet: subscriptions, the synced library folder (so Up Next and positions do not
+survive a restart yet), downloads, cover art, Podcast Index, Opus and HE-AAC audio.
 
 ## Layout
 
@@ -39,7 +52,8 @@ Index (it will need your own free key).
 | `torrocast-net` | HTTP behind a trait that tests replace |
 | `torrocast-directory` | Directories: Apple, fyyd, and merging their answers |
 | `torrocast-feed` | Feed parsing, chapters, show notes — pure, no network |
-| `torrocast-core` | Commands in, events out; settings. No user interface |
+| `torrocast-player` | Streaming, decoding, tempo at the same pitch (WSOLA), the sound card |
+| `torrocast-core` | Commands in, events out; playback and Up Next; settings. No user interface |
 | `torrocast-tui` | The terminal interface (binary `torrocast`) |
 
 The user interface contains no logic another front end would need too.

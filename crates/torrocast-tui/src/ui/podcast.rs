@@ -21,24 +21,13 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
     let text_width = usize::from(area.width.saturating_sub(4));
 
     // Until the feed is here, the directory's words stand in.
-    let author = podcast
-        .and_then(|podcast| podcast.author.clone())
-        .or_else(|| view.reference.author.clone());
-    let description = podcast
-        .and_then(|podcast| podcast.description.clone())
-        .or_else(|| view.reference.description.clone());
-    let description_rows = description
-        .as_deref()
-        .map(|text| wrap(text, text_width))
-        .unwrap_or_default();
-    let shown_rows = description_rows
-        .len()
-        .min(if view.expanded { UNFOLDED_ROWS } else { FOLDED_ROWS });
+    let author = podcast.and_then(|podcast| podcast.author.clone()).or_else(|| view.reference.author.clone());
+    let description =
+        podcast.and_then(|podcast| podcast.description.clone()).or_else(|| view.reference.description.clone());
+    let description_rows = description.as_deref().map(|text| wrap(text, text_width)).unwrap_or_default();
+    let shown_rows = description_rows.len().min(if view.expanded { UNFOLDED_ROWS } else { FOLDED_ROWS });
 
-    let mut lines = vec![Line::styled(
-        fit(title, text_width).trim_end().to_owned(),
-        theme::bold(),
-    )];
+    let mut lines = vec![Line::styled(fit(title, text_width).trim_end().to_owned(), theme::bold())];
     lines.push(Line::styled(author.unwrap_or_default(), theme::muted()));
     lines.push(Line::default());
 
@@ -46,15 +35,13 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
         Some(podcast) => podcast.categories.iter().take(3).cloned().collect(),
         None => view.reference.genres.iter().take(3).cloned().collect(),
     };
-    if let Some(language) = podcast
-        .and_then(|podcast| podcast.language.clone())
-        .or_else(|| view.reference.language.clone())
+    if let Some(language) =
+        podcast.and_then(|podcast| podcast.language.clone()).or_else(|| view.reference.language.clone())
     {
         facts.push(language);
     }
-    if let Some(count) = podcast
-        .map(|podcast| podcast.episodes.len())
-        .or(view.reference.episode_count.map(|count| count as usize))
+    if let Some(count) =
+        podcast.map(|podcast| podcast.episodes.len()).or(view.reference.episode_count.map(|count| count as usize))
     {
         facts.push(format!("{count} {}", lang.t("episodes")));
     }
@@ -63,9 +50,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
     }
     lines.push(Line::raw(fit(&facts.join(" · "), text_width).trim_end().to_owned()));
 
-    let website = podcast
-        .and_then(|podcast| podcast.website.clone())
-        .or_else(|| view.reference.website.clone());
+    let website = podcast.and_then(|podcast| podcast.website.clone()).or_else(|| view.reference.website.clone());
     if let Some(website) = website {
         lines.push(Line::styled(short(&website, text_width), theme::link()));
     }
@@ -74,10 +59,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
         lines.push(Line::from(vec![
             Span::styled("♥ ", Style::new().fg(theme::ACCENT)),
             Span::styled(format!("{label}  "), theme::muted()),
-            Span::styled(
-                short(&funding.url, text_width.saturating_sub(label.chars().count() + 4)),
-                theme::link(),
-            ),
+            Span::styled(short(&funding.url, text_width.saturating_sub(label.chars().count() + 4)), theme::link()),
         ]));
     }
     if shown_rows > 0 {
@@ -106,47 +88,25 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
 
     let head_height = (lines.len() as u16 + 2).min(area.height.saturating_sub(6));
     let [head, list] = Layout::vertical([Constraint::Length(head_height), Constraint::Min(0)]).areas(area);
-    let block = panel(
-        &format!("{} › {}", lang.t("Discover"), fit(title, 40).trim_end()),
-        false,
-    );
+    let block = panel(&format!("{} › {}", lang.t("Discover"), fit(title, 40).trim_end()), false);
     let inner = block.inner(head);
     frame.render_widget(block, head);
-    frame.render_widget(
-        Paragraph::new(lines),
-        Rect {
-            x: inner.x + 1,
-            width: inner.width.saturating_sub(2),
-            ..inner
-        },
-    );
+    frame.render_widget(Paragraph::new(lines), Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner });
 
     draw_episodes(frame, list, app, view);
 }
 
 fn short(address: &str, width: usize) -> String {
-    let address = address
-        .split_once("://")
-        .map_or(address, |(_, rest)| rest)
-        .trim_end_matches('/');
+    let address = address.split_once("://").map_or(address, |(_, rest)| rest).trim_end_matches('/');
     fit(address, width).trim_end().to_owned()
 }
 
 fn draw_episodes(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastView) {
     let lang = app.lang;
-    let order = lang.t(if view.newest_first {
-        "newest first"
-    } else {
-        "oldest first"
-    });
+    let order = lang.t(if view.newest_first { "newest first" } else { "oldest first" });
     let mut title = format!("{} · {order}", lang.t("Episodes"));
     if view.filtering || !view.filter.is_empty() {
-        title.push_str(&format!(
-            " · {}: {}{}",
-            lang.t("Filter"),
-            view.filter,
-            if view.filtering { "▏" } else { "" }
-        ));
+        title.push_str(&format!(" · {}: {}{}", lang.t("Filter"), view.filter, if view.filtering { "▏" } else { "" }));
     }
     let block = panel(&title, true);
     let inner = block.inner(area);
@@ -194,18 +154,30 @@ fn draw_episodes(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastVie
                 if episode.transcripts.is_empty() { " " } else { "¶" }
             );
             let chosen = index == view.index;
+            // The first column says where the episode stands in the queue.
+            let key = torrocast_core::QueueItem::from_feed(podcast, view.reference.feed_url.as_deref(), episode)
+                .map(|item| item.key());
+            let (queue_mark, queue_colour) = match key.and_then(|key| app.queue_state(&key)) {
+                Some(crate::app::QueueState::Playing) => ("▶", theme::ACCENT),
+                Some(crate::app::QueueState::Queued(_)) => ("✓", theme::GREEN),
+                None => (" ", theme::MUTED),
+            };
             let (base, quiet, mark) = if chosen {
                 let background = Style::new().bg(theme::SELECTION);
-                (
-                    theme::selected(),
-                    background.fg(theme::MUTED),
-                    background.fg(theme::CYAN),
-                )
+                (theme::selected(), background.fg(theme::MUTED), background.fg(theme::CYAN))
             } else {
                 (Style::new(), theme::muted(), theme::link())
             };
             Line::from(vec![
-                Span::styled(format!(" {} ", fit(&episode.title, title_width)), base),
+                Span::styled(
+                    queue_mark,
+                    if chosen {
+                        Style::new().bg(theme::SELECTION).fg(queue_colour)
+                    } else {
+                        Style::new().fg(queue_colour)
+                    },
+                ),
+                Span::styled(format!("{} ", fit(&episode.title, title_width)), base),
                 Span::styled(format!("{published:>DATE$}  {length:>LENGTH$} "), quiet),
                 Span::styled(fit(&format!(" {marks}"), MARKS + 1), mark),
             ])
@@ -213,6 +185,15 @@ fn draw_episodes(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastVie
         .collect();
     while lines.len() < height {
         lines.push(Line::default());
+    }
+    // What was just queued is said here; otherwise the row explains the marks.
+    if let Some(notice) = &app.notice {
+        lines.push(Line::from(vec![
+            Span::styled(" ✓ ", Style::new().fg(theme::GREEN)),
+            Span::styled(notice.clone(), theme::muted()),
+        ]));
+        frame.render_widget(Paragraph::new(lines), inner);
+        return;
     }
     lines.push(Line::from(vec![
         Span::styled(" ▤", theme::link()),

@@ -27,12 +27,18 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let active = Tab::ALL.iter().position(|tab| *tab == app.tab).unwrap_or(0);
     let mut lines: Vec<Line<'_>> = tab_lines(&titles, active).into();
     if app.tab == Tab::Search {
-        let mut input = vec![
-            Span::styled("  ⌕ ", theme::muted()),
-            Span::raw(app.search.input.clone()),
-        ];
+        let mut input = vec![Span::styled("  ⌕ ", theme::muted()), Span::raw(app.search.input.clone())];
         if editing {
             input.push(Span::styled("▏", Style::new().fg(theme::ACCENT)));
+        }
+        // What is searched for, on the right of the same row: shows or single episodes.
+        let modes = [(lang.t("Podcasts"), !app.search.episodes_mode), (lang.t("Episodes"), app.search.episodes_mode)];
+        let typed: usize = 4 + app.search.input.chars().count() + usize::from(editing);
+        let needed: usize = modes.iter().map(|(name, _)| name.chars().count() + 3).sum();
+        input.push(Span::raw(" ".repeat(usize::from(inner.width).saturating_sub(typed + needed + 1))));
+        for (name, active) in modes {
+            input.push(Span::styled(name, if active { theme::bold().fg(theme::ACCENT) } else { theme::muted() }));
+            input.push(Span::raw("   "));
         }
         lines.push(Line::default());
         lines.push(Line::from(input));
@@ -49,6 +55,10 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
 fn draw_search(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let lang = app.lang;
     let search = &app.search;
+    if search.episodes_mode {
+        draw_found_episodes(frame, area, app);
+        return;
+    }
     let mut title = if search.sent.is_empty() {
         lang.t("Results").to_owned()
     } else {
@@ -59,11 +69,8 @@ fn draw_search(frame: &mut Frame<'_>, area: Rect, app: &App) {
     }
     let focused = !search.editing;
     // A directory that failed is said once, below the list; the others' results stay.
-    let mut problems: Vec<String> = search
-        .failures
-        .iter()
-        .map(|(provider, problem)| lang.provider_problem(*provider, *problem))
-        .collect();
+    let mut problems: Vec<String> =
+        search.failures.iter().map(|(provider, problem)| lang.provider_problem(*provider, *problem)).collect();
     if let [(_, problem)] = search.failures.as_slice()
         && search.pending.is_empty()
         && search.results.is_empty()
@@ -96,16 +103,7 @@ fn draw_search(frame: &mut Frame<'_>, area: Rect, app: &App) {
         return;
     }
     let footer = app.notice.clone().or_else(|| problems.first().cloned());
-    draw_shows(
-        frame,
-        area,
-        app,
-        &title,
-        &search.results,
-        search.index,
-        focused,
-        footer.as_deref(),
-    );
+    draw_shows(frame, area, app, &title, &search.results, search.index, focused, footer.as_deref());
 }
 
 fn draw_charts(frame: &mut Frame<'_>, area: Rect, app: &App) {
@@ -118,16 +116,7 @@ fn draw_charts(frame: &mut Frame<'_>, area: Rect, app: &App) {
     };
     match charts.load {
         Load::Ready if !charts.list.is_empty() => {
-            draw_shows(
-                frame,
-                area,
-                app,
-                &title,
-                &charts.list,
-                charts.index,
-                true,
-                app.notice.as_deref(),
-            );
+            draw_shows(frame, area, app, &title, &charts.list, charts.index, true, app.notice.as_deref());
         }
         state => {
             let block = panel(&title, true);
@@ -176,6 +165,79 @@ fn draw_categories(frame: &mut Frame<'_>, area: Rect, app: &App) {
     }
 }
 
+/// Episodes found by search: playable from here, without opening their podcast.
+fn draw_found_episodes(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let lang = app.lang;
+    let search = &app.search;
+    let title = match search.episodes_load {
+        Load::Ready => format!("{} {}", search.episodes.len(), lang.t("Episodes")),
+        _ => lang.t("Episodes").to_owned(),
+    };
+    let block = panel(&title, !search.editing);
+    let mut inner = block.inner(area);
+    frame.render_widget(block, area);
+    match search.episodes_load {
+        Load::Idle => {
+            return empty(
+                frame,
+                inner,
+                &[lang.t("Nothing searched yet. Type a word, or switch to the charts with tab.")],
+            );
+        }
+        Load::Loading => return empty(frame, inner, &[lang.t("Searching for episodes …")]),
+        Load::Failed(problem) => return empty(frame, inner, &[lang.problem(problem)]),
+        Load::Ready if search.episodes.is_empty() => return empty(frame, inner, &[lang.t("Nothing found for this.")]),
+        Load::Ready => {}
+    }
+    if let Some(notice) = &app.notice {
+        let row =
+            Rect { x: inner.x + 1, y: inner.y + inner.height - 1, width: inner.width.saturating_sub(2), height: 1 };
+        let line = Line::from(vec![
+            Span::styled("✓ ", Style::new().fg(theme::GREEN)),
+            Span::styled(notice.clone(), theme::muted()),
+        ]);
+        frame.render_widget(Paragraph::new(line), row);
+        inner.height = inner.height.saturating_sub(2);
+    }
+
+    let (width, height) = (usize::from(inner.width), usize::from(inner.height));
+    let start = window(search.episode_index, search.episodes.len(), height, 3);
+    let mut lines = Vec::new();
+    for (index, episode) in search.episodes.iter().enumerate().skip(start).take(height.div_ceil(3)) {
+        let chosen = index == search.episode_index;
+        let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
+        let (state, state_style) = queue_label(app, &torrocast_core::QueueItem::from_search(episode).key());
+        let title_width = width.saturating_sub(state.chars().count() + 3);
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {}", fit(&episode.title, title_width)),
+                if chosen { theme::selected() } else { Style::new() },
+            ),
+            Span::styled(format!(" {state} "), state_style.patch(background)),
+        ]));
+        let mut facts = vec![episode.podcast.clone()];
+        facts.extend(episode.published.map(|moment| date(lang, moment)));
+        facts.extend(episode.duration_ms.map(|milliseconds| crate::text::duration((milliseconds / 1000) as u32)));
+        lines.push(Line::styled(fit(&format!(" {}", facts.join(" · ")), width), background.fg(theme::MUTED)));
+        lines.push(Line::default());
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
+}
+
+/// "▶ playing" or "✓ Up Next · number 2" — where an episode stands in the queue.
+pub(crate) fn queue_label(app: &App, key: &str) -> (String, Style) {
+    match app.queue_state(key) {
+        Some(crate::app::QueueState::Playing) => {
+            (format!("▶ {}", app.lang.t("playing")), Style::new().fg(theme::ACCENT))
+        }
+        Some(crate::app::QueueState::Queued(place)) => (
+            format!("✓ {} · {} {}", app.lang.t("Up Next"), app.lang.t("number"), place + 1),
+            Style::new().fg(theme::GREEN),
+        ),
+        None => (String::new(), Style::new()),
+    }
+}
+
 /// A list of shows, two rows each, with a preview beside it where there is room.
 #[allow(clippy::too_many_arguments)]
 fn draw_shows(
@@ -201,12 +263,8 @@ fn draw_shows(
     if let Some(footer) = footer {
         let rows = wrap(footer, usize::from(inner.width.saturating_sub(2)));
         let height = (rows.len() as u16).min(inner.height.saturating_sub(3));
-        let note = Rect {
-            x: inner.x + 1,
-            y: inner.y + inner.height - height,
-            width: inner.width.saturating_sub(2),
-            height,
-        };
+        let note =
+            Rect { x: inner.x + 1, y: inner.y + inner.height - height, width: inner.width.saturating_sub(2), height };
         let lines: Vec<Line<'_>> = rows.into_iter().map(|row| Line::styled(row, theme::muted())).collect();
         frame.render_widget(Paragraph::new(lines), note);
         inner.height = inner.height.saturating_sub(height + 1);
@@ -243,23 +301,13 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App, show: &PodcastRef)
     let block = panel(lang.t("Preview"), false);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let inner = Rect {
-        x: inner.x + 1,
-        width: inner.width.saturating_sub(2),
-        ..inner
-    };
+    let inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
     let width = usize::from(inner.width);
 
-    let mut lines: Vec<Line<'_>> = wrap(&show.title, width)
-        .into_iter()
-        .map(|row| Line::styled(row, theme::bold()))
-        .collect();
+    let mut lines: Vec<Line<'_>> =
+        wrap(&show.title, width).into_iter().map(|row| Line::styled(row, theme::bold())).collect();
     if let Some(author) = &show.author {
-        lines.extend(
-            wrap(author, width)
-                .into_iter()
-                .map(|row| Line::styled(row, theme::muted())),
-        );
+        lines.extend(wrap(author, width).into_iter().map(|row| Line::styled(row, theme::muted())));
     }
     lines.push(Line::default());
     if !show.genres.is_empty() {
@@ -282,16 +330,10 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App, show: &PodcastRef)
         lines.push(field(lang.t("Language"), Span::raw(language.clone())));
     }
     if let Some(website) = &show.website {
-        let address = website
-            .split_once("://")
-            .map_or(website.as_str(), |(_, rest)| rest)
-            .trim_end_matches('/');
+        let address = website.split_once("://").map_or(website.as_str(), |(_, rest)| rest).trim_end_matches('/');
         lines.push(field(
             lang.t("Website"),
-            Span::styled(
-                fit(address, width.saturating_sub(14)).trim_end().to_owned(),
-                theme::link(),
-            ),
+            Span::styled(fit(address, width.saturating_sub(14)).trim_end().to_owned(), theme::link()),
         ));
     }
     lines.push(Line::default());
@@ -306,12 +348,9 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App, show: &PodcastRef)
             .map(|row| Line::styled(row, Style::new().fg(theme::AMBER))),
         ),
         None => lines.extend(
-            wrap(
-                lang.t("Description and episodes appear once you open the podcast."),
-                width,
-            )
-            .into_iter()
-            .map(|row| Line::styled(row, theme::faint())),
+            wrap(lang.t("Description and episodes appear once you open the podcast."), width)
+                .into_iter()
+                .map(|row| Line::styled(row, theme::faint())),
         ),
     }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);

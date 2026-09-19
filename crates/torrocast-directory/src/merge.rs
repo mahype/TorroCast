@@ -20,17 +20,10 @@ pub fn normalise_feed_url(url: &str) -> String {
         None => (location, ""),
     };
     let host = host.to_lowercase();
-    let host = host
-        .strip_suffix(":443")
-        .or_else(|| host.strip_suffix(":80"))
-        .unwrap_or(&host);
+    let host = host.strip_suffix(":443").or_else(|| host.strip_suffix(":80")).unwrap_or(&host);
     let host = host.strip_prefix("www.").unwrap_or(host);
     let path = path.trim_end_matches('/');
-    let mut identity = if path.is_empty() {
-        host.to_owned()
-    } else {
-        format!("{host}/{path}")
-    };
+    let mut identity = if path.is_empty() { host.to_owned() } else { format!("{host}/{path}") };
     if let Some(query) = query.filter(|query| !query.is_empty()) {
         identity.push('?');
         identity.push_str(query);
@@ -113,14 +106,8 @@ mod tests {
     #[test]
     fn spellings_of_one_address_are_one_identity() {
         let expected = "feeds.lagedernation.org/feeds/ldn-mp3.xml";
-        assert_eq!(
-            normalise_feed_url("https://feeds.lagedernation.org/feeds/ldn-mp3.xml"),
-            expected
-        );
-        assert_eq!(
-            normalise_feed_url("http://WWW.feeds.lagedernation.org:80/feeds/ldn-mp3.xml/#top"),
-            expected
-        );
+        assert_eq!(normalise_feed_url("https://feeds.lagedernation.org/feeds/ldn-mp3.xml"), expected);
+        assert_eq!(normalise_feed_url("http://WWW.feeds.lagedernation.org:80/feeds/ldn-mp3.xml/#top"), expected);
     }
 
     #[test]
@@ -132,12 +119,7 @@ mod tests {
     }
 
     fn show(title: &str, feed: &str, source: ProviderId) -> PodcastRef {
-        PodcastRef {
-            title: title.into(),
-            feed_url: Some(feed.into()),
-            sources: vec![source],
-            ..PodcastRef::default()
-        }
+        PodcastRef { title: title.into(), feed_url: Some(feed.into()), sources: vec![source], ..PodcastRef::default() }
     }
 
     #[test]

@@ -1,14 +1,15 @@
 //! What the user is looking at, and what a key does to it. The app never
 //! fetches: it queues [`Command`]s for the core and is told the [`Event`]s.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
-    Category, Chapter, Command, Document, Episode, Event, Podcast, PodcastRef, Problem, ProviderId, Settings, merge,
-    merge_chapters, notes,
+    Category, Chapter, Command, Document, Episode, EpisodeRef, Event, PlaybackState, Podcast, PodcastRef, Problem,
+    ProviderId, QueueItem, Settings, Transport, merge, merge_chapters, notes,
 };
 
 use crate::i18n::Lang;
@@ -21,21 +22,31 @@ pub const MIN_WIDTH: u16 = 80;
 pub const MIN_HEIGHT: u16 = 24;
 const MENU_FIRST_ROW: u16 = 3;
 pub const MENU_WIDTH: u16 = 26;
+/// Rows of the player at the foot of the menu column, with and without the level meter.
+pub const PLAYER_ROWS: u16 = 14;
+pub const PLAYER_ROWS_SHORT: u16 = 11;
+/// Below this height the level meter is the first thing to go.
+pub const METER_FROM_HEIGHT: u16 = 30;
+pub const LEVELS: usize = 22;
+const SEEK_BACK_MS: i64 = -30_000;
+const SEEK_FORWARD_MS: i64 = 30_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Discover,
+    UpNext,
     Settings,
     Help,
 }
 
 impl Section {
-    pub const ALL: [Self; 3] = [Self::Discover, Self::Settings, Self::Help];
+    pub const ALL: [Self; 4] = [Self::Discover, Self::UpNext, Self::Settings, Self::Help];
 
     #[must_use]
     pub fn title(self) -> &'static str {
         match self {
             Self::Discover => "Discover",
+            Self::UpNext => "Up Next",
             Self::Settings => "Settings",
             Self::Help => "Help",
         }
@@ -84,6 +95,11 @@ pub struct Search {
     pub failures: Vec<(ProviderId, Problem)>,
     pub results: Vec<PodcastRef>,
     pub index: usize,
+    /// Searching for episodes instead of shows.
+    pub episodes_mode: bool,
+    pub episodes: Vec<EpisodeRef>,
+    pub episode_index: usize,
+    pub episodes_load: Load,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -116,6 +132,8 @@ pub struct PodcastView {
     pub filter: String,
     pub filtering: bool,
     pub expanded: bool,
+    /// Opened from an episode found by search: go on to this episode once the feed is here.
+    wanted_guid: Option<String>,
 }
 
 impl PodcastView {
@@ -150,6 +168,7 @@ pub enum Focus {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EpisodeView {
     pub podcast: Arc<Podcast>,
+    pub feed_url: Option<String>,
     pub position: usize,
     pub notes: Document,
     pub chapters: Vec<Chapter>,
@@ -180,6 +199,13 @@ impl EpisodeView {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum QueueState {
+    Playing,
+    /// Position in Up Next, counted from 0.
+    Queued(usize),
+}
+
 #[derive(Debug)]
 pub struct App {
     pub lang: Lang,
@@ -196,6 +222,17 @@ pub struct App {
     pub notice: Option<String>,
     /// The directories a search reaches right now, told by whoever owns the core.
     pub providers: Vec<ProviderId>,
+    pub playback: PlaybackState,
+    /// The last moments' loudness, oldest first, for the meter in the player.
+    pub levels: VecDeque<f32>,
+    pub up_next_index: usize,
+    /// The large player covers the content area.
+    pub player_open: bool,
+    pub player_chapter: usize,
+    /// `C` was pressed once in Up Next; the second press clears the list.
+    confirm_clear: bool,
+    /// Told by the main loop, so a click can be matched to the player's buttons.
+    pub terminal_height: u16,
     requests: u64,
     // What the main loop has to do on the app's behalf.
     pub commands: Vec<Command>,
@@ -228,24 +265,25 @@ impl App {
                 failures: Vec::new(),
                 results: Vec::new(),
                 index: 0,
+                episodes_mode: false,
+                episodes: Vec::new(),
+                episode_index: 0,
+                episodes_load: Load::Idle,
             },
-            charts: Charts {
-                request: 0,
-                category: None,
-                list: Vec::new(),
-                index: 0,
-                load: Load::Idle,
-            },
-            categories: Categories {
-                list: Vec::new(),
-                index: 0,
-                load: Load::Idle,
-            },
+            charts: Charts { request: 0, category: None, list: Vec::new(), index: 0, load: Load::Idle },
+            categories: Categories { list: Vec::new(), index: 0, load: Load::Idle },
             podcast: None,
             episode: None,
             settings_index: 0,
             notice: None,
             providers,
+            playback: PlaybackState { speed: 1.0, ..PlaybackState::default() },
+            levels: VecDeque::new(),
+            up_next_index: 0,
+            player_open: false,
+            player_chapter: 0,
+            confirm_clear: false,
+            terminal_height: 0,
             requests: 0,
             commands: Vec::new(),
             open_urls: Vec::new(),
@@ -261,14 +299,34 @@ impl App {
 
     /// Which screen is up — equal values mean the same screen, whatever its content.
     #[must_use]
-    pub fn screen(&self) -> (Section, Tab, bool, bool) {
-        (self.section, self.tab, self.podcast.is_some(), self.episode.is_some())
+    pub fn screen(&self) -> (Section, Tab, bool, bool, bool) {
+        (self.section, self.tab, self.podcast.is_some(), self.episode.is_some(), self.player_open)
+    }
+
+    fn transport(&mut self, transport: Transport) {
+        self.commands.push(Command::Transport(transport));
+    }
+
+    /// Whether the player at the foot of the menu column is on screen.
+    #[must_use]
+    pub fn shows_mini_player(&self) -> bool {
+        self.playback.now.is_some() && !self.player_open
+    }
+
+    /// What the queue says about an episode: playing, or its place in Up Next.
+    #[must_use]
+    pub fn queue_state(&self, item_key: &str) -> Option<QueueState> {
+        if self.playback.now.as_ref().is_some_and(|now| now.item.key() == item_key) {
+            return Some(QueueState::Playing);
+        }
+        self.playback.up_next.iter().position(|item| item.key() == item_key).map(QueueState::Queued)
     }
 
     /// Whether characters typed right now go into a text field.
     #[must_use]
     pub fn is_typing(&self) -> bool {
         match self.section {
+            _ if self.player_open => false,
             Section::Discover if self.episode.is_some() => false,
             Section::Discover => match &self.podcast {
                 Some(view) => view.filtering,
@@ -282,10 +340,7 @@ impl App {
 
     /// Called regularly; starts the search once the typing has paused.
     pub fn tick(&mut self, now: Instant) {
-        let due = self
-            .search
-            .typed_at
-            .is_some_and(|typed| now.duration_since(typed) >= SEARCH_DELAY);
+        let due = self.search.typed_at.is_some_and(|typed| now.duration_since(typed) >= SEARCH_DELAY);
         if due {
             self.start_search();
         }
@@ -300,17 +355,20 @@ impl App {
         // An address is not a search: it is the feed itself.
         if query.starts_with("http://") || query.starts_with("https://") {
             self.search.editing = false;
-            let reference = PodcastRef {
-                title: query.clone(),
-                feed_url: Some(query),
-                ..PodcastRef::default()
-            };
+            let reference = PodcastRef { title: query.clone(), feed_url: Some(query), ..PodcastRef::default() };
             self.open_podcast(reference);
             return;
         }
         let request = self.next_request();
         self.search.request = request;
         self.search.sent.clone_from(&query);
+        if self.search.episodes_mode {
+            self.search.episodes.clear();
+            self.search.episode_index = 0;
+            self.search.episodes_load = Load::Loading;
+            self.commands.push(Command::SearchEpisodes { request, query });
+            return;
+        }
         self.search.pending.clone_from(&self.providers);
         self.search.batches.clear();
         self.search.failures.clear();
@@ -323,11 +381,7 @@ impl App {
 
     pub fn on_event(&mut self, event: Event) {
         match event {
-            Event::SearchBatch {
-                request,
-                provider,
-                outcome,
-            } if request == self.search.request => {
+            Event::SearchBatch { request, provider, outcome } if request == self.search.request => {
                 self.search.pending.retain(|pending| *pending != provider);
                 match outcome {
                     Ok(batch) => self.search.batches.push((provider, batch)),
@@ -340,13 +394,42 @@ impl App {
                     self.search.batches.iter().map(|(_, batch)| batch.clone()).collect();
                 self.search.results = merge(&batches);
                 self.search.index = selected
-                    .and_then(|selected| {
-                        self.search
-                            .results
-                            .iter()
-                            .position(|result| same_show(result, &selected))
-                    })
+                    .and_then(|selected| self.search.results.iter().position(|result| same_show(result, &selected)))
                     .unwrap_or(0);
+            }
+            Event::EpisodeResults { request, outcome } if request == self.search.request => match outcome {
+                Ok(episodes) => {
+                    self.search.episodes = episodes;
+                    self.search.episodes_load = Load::Ready;
+                }
+                Err(problem) => self.search.episodes_load = Load::Failed(problem),
+            },
+            Event::Playback(state) => {
+                if state.now.is_none() {
+                    self.levels.clear();
+                    self.player_open = false;
+                }
+                self.up_next_index = self.up_next_index.min(state.up_next.len().saturating_sub(1));
+                self.playback = *state;
+            }
+            Event::Level(level) => {
+                self.levels.push_back(level);
+                while self.levels.len() > LEVELS {
+                    self.levels.pop_front();
+                }
+            }
+            Event::Queued { title, place } => {
+                let title: String = title.chars().take(40).collect();
+                self.notice = Some(match (self.lang, place) {
+                    (Lang::De, Some(0)) => format!("„{title}“ liegt jetzt am Anfang von Als Nächstes."),
+                    (Lang::De, Some(place)) => {
+                        format!("„{title}“ liegt jetzt auf Platz {} von Als Nächstes.", place + 1)
+                    }
+                    (Lang::De, None) => format!("„{title}“ ist nicht mehr in Als Nächstes."),
+                    (Lang::En, Some(0)) => format!("“{title}” is now first in Up Next."),
+                    (Lang::En, Some(place)) => format!("“{title}” is now number {} in Up Next.", place + 1),
+                    (Lang::En, None) => format!("“{title}” is no longer in Up Next."),
+                });
             }
             Event::Charts { request, outcome } if request == self.charts.request => match outcome {
                 Ok(list) => {
@@ -364,14 +447,28 @@ impl App {
                 Err(problem) => self.categories.load = Load::Failed(problem),
             },
             Event::Feed { request, outcome } => {
+                let mut wanted = None;
                 if let Some(view) = self.podcast.as_mut().filter(|view| view.request == request) {
                     match outcome {
                         Ok(podcast) => {
                             view.podcast = Some(podcast);
                             view.load = Load::Ready;
                             view.index = 0;
+                            wanted = view.wanted_guid.take();
                         }
                         Err(problem) => view.load = Load::Failed(problem),
+                    }
+                }
+                // Came here for one episode: go straight on to it.
+                if let (Some(guid), Some(view)) = (wanted, self.podcast.as_mut()) {
+                    let position = view.visible().iter().position(|position| {
+                        view.podcast
+                            .as_ref()
+                            .is_some_and(|podcast| podcast.episodes[*position].guid.as_deref() == Some(&guid))
+                    });
+                    if let Some(position) = position {
+                        view.index = position;
+                        self.open_episode();
                     }
                 }
             }
@@ -382,11 +479,40 @@ impl App {
                 }
             }
             // An answer to a question nobody is asking any more.
-            Event::SearchBatch { .. } | Event::Charts { .. } => {}
+            Event::SearchBatch { .. } | Event::Charts { .. } | Event::EpisodeResults { .. } => {}
         }
     }
 
     // ── navigation ──────────────────────────────────────────────────────────
+
+    fn open_found_episode(&mut self) {
+        let Some(found) = self.search.episodes.get(self.search.episode_index).cloned() else { return };
+        let reference =
+            PodcastRef { title: found.podcast.clone(), feed_url: found.feed_url.clone(), ..PodcastRef::default() };
+        self.open_podcast(reference);
+        if let Some(view) = &mut self.podcast {
+            view.wanted_guid = found.guid;
+        }
+    }
+
+    /// The episode the selection is on, wherever that is, as something playable.
+    fn selected_item(&self) -> Option<QueueItem> {
+        if self.section != Section::Discover {
+            return None;
+        }
+        if let Some(view) = &self.episode {
+            return QueueItem::from_feed(&view.podcast, view.feed_url.as_deref(), view.episode());
+        }
+        if let Some(view) = &self.podcast {
+            let podcast = view.podcast.as_ref()?;
+            let position = *view.visible().get(view.index)?;
+            return QueueItem::from_feed(podcast, view.reference.feed_url.as_deref(), &podcast.episodes[position]);
+        }
+        if self.tab == Tab::Search && self.search.episodes_mode {
+            return self.search.episodes.get(self.search.episode_index).map(QueueItem::from_search);
+        }
+        None
+    }
 
     fn open_podcast(&mut self, reference: PodcastRef) {
         let Some(feed_url) = reference.feed_url.clone() else {
@@ -398,11 +524,7 @@ impl App {
             return;
         };
         let request = self.next_request();
-        self.commands.push(Command::OpenFeed {
-            request,
-            feed_url,
-            reload: false,
-        });
+        self.commands.push(Command::OpenFeed { request, feed_url, reload: false });
         self.podcast = Some(PodcastView {
             reference,
             request,
@@ -413,6 +535,7 @@ impl App {
             filter: String::new(),
             filtering: false,
             expanded: false,
+            wanted_guid: None,
         });
     }
 
@@ -421,6 +544,7 @@ impl App {
         let (Some(podcast), Some(position)) = (view.podcast.clone(), view.visible().get(view.index).copied()) else {
             return;
         };
+        let feed_url = view.reference.feed_url.clone();
         let episode = &podcast.episodes[position];
         let notes = episode.notes_html.as_deref().map(notes::document).unwrap_or_default();
         let chapters = episode.chapters.clone();
@@ -440,14 +564,11 @@ impl App {
         };
         let request = self.next_request();
         if looking.is_some() {
-            self.commands.push(Command::Chapters {
-                request,
-                chapters_url,
-                mp3_url,
-            });
+            self.commands.push(Command::Chapters { request, chapters_url, mp3_url });
         }
         self.episode = Some(EpisodeView {
             podcast,
+            feed_url,
             position,
             notes,
             chapters,
@@ -464,10 +585,7 @@ impl App {
         self.charts.request = request;
         self.charts.load = Load::Loading;
         self.charts.list.clear();
-        self.commands.push(Command::Charts {
-            request,
-            category: category.as_ref().map(|category| category.id),
-        });
+        self.commands.push(Command::Charts { request, category: category.as_ref().map(|category| category.id) });
         self.charts.category = category;
     }
 
@@ -497,6 +615,7 @@ impl App {
             match key.code {
                 KeyCode::Char('c' | 'q') => self.should_quit = true,
                 KeyCode::Char('u') if self.is_typing() => self.edit(|text| text.clear()),
+                KeyCode::Char('e') => self.toggle_episode_search(),
                 _ => {}
             }
             return;
@@ -505,15 +624,26 @@ impl App {
             self.on_typing_key(key.code);
             return;
         }
+        if !matches!(key.code, KeyCode::Char('C')) {
+            self.confirm_clear = false;
+        }
+        if self.on_transport_key(key.code) {
+            return;
+        }
+        if self.player_open {
+            self.on_player_key(key.code);
+            return;
+        }
         match key.code {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.section = Section::Help,
             // Inside an episode the digits belong to the links.
-            KeyCode::Char(digit @ '1'..='3') if !(self.section == Section::Discover && self.episode.is_some()) => {
+            KeyCode::Char(digit @ '1'..='4') if !(self.section == Section::Discover && self.episode.is_some()) => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
             }
             code => match self.section {
                 Section::Discover => self.on_discover_key(code),
+                Section::UpNext => self.on_up_next_key(code),
                 Section::Settings => self.on_settings_key(code),
                 Section::Help => {
                     if matches!(code, KeyCode::Esc | KeyCode::Backspace | KeyCode::Left) {
@@ -521,6 +651,105 @@ impl App {
                     }
                 }
             },
+        }
+    }
+
+    /// The keys that drive playback work on every screen. `true` if `code` was one.
+    fn on_transport_key(&mut self, code: KeyCode) -> bool {
+        if code == KeyCode::Char('0') {
+            if self.playback.now.is_some() {
+                self.player_open = !self.player_open;
+                self.player_chapter = self.playback.now.as_ref().and_then(|now| now.chapter_index()).unwrap_or(0);
+            }
+            return true;
+        }
+        // Queueing works wherever an episode is selected.
+        if let KeyCode::Char(key @ ('a' | 'A' | 'p')) = code
+            && !self.player_open
+            && let Some(item) = self.selected_item()
+        {
+            self.transport(match key {
+                'p' => Transport::PlayNow(item),
+                key => Transport::Enqueue { item, first: key == 'A' },
+            });
+            return true;
+        }
+        if self.playback.now.is_none() {
+            return false;
+        }
+        let transport = match code {
+            KeyCode::Char(' ') => Transport::Toggle,
+            KeyCode::Char('x') => Transport::Stop,
+            KeyCode::Char(',') => Transport::PreviousChapter,
+            KeyCode::Char('.') => Transport::NextChapter,
+            KeyCode::Char('n') => Transport::NextEpisode,
+            KeyCode::Char('b') => Transport::SeekBy(SEEK_BACK_MS),
+            KeyCode::Char('f') => Transport::SeekBy(SEEK_FORWARD_MS),
+            KeyCode::Char('-') => Transport::SpeedBy(-0.1),
+            KeyCode::Char('+' | '=') => Transport::SpeedBy(0.1),
+            _ => return false,
+        };
+        self.transport(transport);
+        true
+    }
+
+    fn on_player_key(&mut self, code: KeyCode) {
+        let chapters: Vec<u64> = self
+            .playback
+            .now
+            .as_ref()
+            .map(|now| now.chapters().iter().map(|chapter| chapter.start_ms).collect())
+            .unwrap_or_default();
+        match code {
+            KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => self.player_open = false,
+            KeyCode::Char('q') => self.should_quit = true,
+            KeyCode::Char('?') => (self.section, self.player_open) = (Section::Help, false),
+            // The menu stays one key away, as on every other screen.
+            KeyCode::Char(digit @ '1'..='4') => {
+                self.section = Section::ALL[digit as usize - '1' as usize];
+                self.player_open = false;
+            }
+            KeyCode::Enter => {
+                if let Some(start) = chapters.get(self.player_chapter) {
+                    self.transport(Transport::SeekTo(*start));
+                }
+            }
+            code => move_selection(&mut self.player_chapter, chapters.len(), code),
+        }
+    }
+
+    fn on_up_next_key(&mut self, code: KeyCode) {
+        let count = self.playback.up_next.len();
+        let index = self.up_next_index;
+        match code {
+            KeyCode::Enter | KeyCode::Char('p') if index < count => self.transport(Transport::PlayQueued(index)),
+            KeyCode::Char('d') | KeyCode::Delete if index < count => self.transport(Transport::Remove(index)),
+            KeyCode::Char('J') if index + 1 < count => {
+                self.transport(Transport::Shift { index, down: true });
+                self.up_next_index += 1;
+            }
+            KeyCode::Char('K') if index > 0 && index < count => {
+                self.transport(Transport::Shift { index, down: false });
+                self.up_next_index -= 1;
+            }
+            KeyCode::Char('C') if count > 0 => {
+                if self.confirm_clear {
+                    self.transport(Transport::Clear);
+                    self.confirm_clear = false;
+                } else {
+                    self.confirm_clear = true;
+                    self.notice = Some(self.lang.t("Press C again to empty the list.").to_owned());
+                }
+            }
+            code => move_selection(&mut self.up_next_index, count, code),
+        }
+    }
+
+    fn toggle_episode_search(&mut self) {
+        if self.section == Section::Discover && self.podcast.is_none() && self.tab == Tab::Search {
+            self.search.episodes_mode = !self.search.episodes_mode;
+            self.search.sent.clear();
+            self.start_search();
         }
     }
 
@@ -584,6 +813,7 @@ impl App {
             }
             KeyCode::Tab => self.cycle_tab(1),
             KeyCode::BackTab => self.cycle_tab(-1),
+            KeyCode::Char('e') => self.toggle_episode_search(),
             KeyCode::Char('r') => match self.tab {
                 Tab::Charts => self.load_charts(self.charts.category.clone()),
                 Tab::Categories => {
@@ -598,10 +828,11 @@ impl App {
             KeyCode::Esc | KeyCode::Backspace if self.tab == Tab::Charts && self.charts.category.is_some() => {
                 self.load_charts(None)
             }
-            KeyCode::Up | KeyCode::Char('k') if self.tab == Tab::Search && self.search.index == 0 => {
+            KeyCode::Up | KeyCode::Char('k') if self.tab == Tab::Search && self.search_selection() == 0 => {
                 self.search.editing = true
             }
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => match self.tab {
+                Tab::Search if self.search.episodes_mode => self.open_found_episode(),
                 Tab::Search => {
                     if let Some(reference) = self.search.results.get(self.search.index).cloned() {
                         self.open_podcast(reference);
@@ -621,6 +852,9 @@ impl App {
             },
             code => {
                 let (index, count) = match self.tab {
+                    Tab::Search if self.search.episodes_mode => {
+                        (&mut self.search.episode_index, self.search.episodes.len())
+                    }
                     Tab::Search => (&mut self.search.index, self.search.results.len()),
                     Tab::Charts => (&mut self.charts.index, self.charts.list.len()),
                     Tab::Categories => (&mut self.categories.index, self.categories.list.len()),
@@ -628,6 +862,10 @@ impl App {
                 move_selection(index, count, code);
             }
         }
+    }
+
+    fn search_selection(&self) -> usize {
+        if self.search.episodes_mode { self.search.episode_index } else { self.search.index }
     }
 
     fn on_podcast_key(&mut self, code: KeyCode) {
@@ -653,11 +891,7 @@ impl App {
                 if let Some(feed_url) = view.reference.feed_url.clone() {
                     view.load = Load::Loading;
                     let request = view.request;
-                    self.commands.push(Command::OpenFeed {
-                        request,
-                        feed_url,
-                        reload: true,
-                    });
+                    self.commands.push(Command::OpenFeed { request, feed_url, reload: true });
                 }
             }
             code => {
@@ -673,11 +907,7 @@ impl App {
         match code {
             KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => self.episode = None,
             KeyCode::Tab | KeyCode::BackTab if chapters > 0 => {
-                view.focus = if view.focus == Focus::Notes {
-                    Focus::Chapters
-                } else {
-                    Focus::Notes
-                };
+                view.focus = if view.focus == Focus::Notes { Focus::Chapters } else { Focus::Notes };
             }
             KeyCode::Char(digit @ '1'..='9') => {
                 let link = view.notes.links.get(digit as usize - '1' as usize).cloned();
@@ -688,10 +918,7 @@ impl App {
                 self.open_urls.extend(link);
             }
             KeyCode::Enter if view.focus == Focus::Chapters => {
-                let link = view
-                    .listed_chapters()
-                    .get(view.chapter_index)
-                    .and_then(|chapter| chapter.url.clone());
+                let link = view.listed_chapters().get(view.chapter_index).and_then(|chapter| chapter.url.clone());
                 self.open_urls.extend(link);
             }
             code if view.focus == Focus::Chapters => move_selection(&mut view.chapter_index, chapters, code),
@@ -699,7 +926,7 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => view.scroll = view.scroll.saturating_sub(1),
             KeyCode::Down | KeyCode::Char('j') => view.scroll = view.scroll.saturating_add(1),
             KeyCode::PageUp => view.scroll = view.scroll.saturating_sub(10),
-            KeyCode::PageDown | KeyCode::Char(' ') => view.scroll = view.scroll.saturating_add(10),
+            KeyCode::PageDown => view.scroll = view.scroll.saturating_add(10),
             KeyCode::Home | KeyCode::Char('g') => view.scroll = 0,
             KeyCode::End | KeyCode::Char('G') => view.scroll = u16::MAX,
             _ => {}
@@ -723,24 +950,13 @@ impl App {
 
     fn cycle_country(&mut self, step: isize) {
         let position = COUNTRIES.iter().position(|country| *country == self.settings.country);
-        let next = position.map_or(0, |position| {
-            (position as isize + step).rem_euclid(COUNTRIES.len() as isize) as usize
-        });
+        let next =
+            position.map_or(0, |position| (position as isize + step).rem_euclid(COUNTRIES.len() as isize) as usize);
         self.settings.country = COUNTRIES[next].to_owned();
         self.settings_changed = true;
         // Charts and categories belong to the country they were loaded for.
-        self.charts = Charts {
-            request: 0,
-            category: None,
-            list: Vec::new(),
-            index: 0,
-            load: Load::Idle,
-        };
-        self.categories = Categories {
-            list: Vec::new(),
-            index: 0,
-            load: Load::Idle,
-        };
+        self.charts = Charts { request: 0, category: None, list: Vec::new(), index: 0, load: Load::Idle };
+        self.categories = Categories { list: Vec::new(), index: 0, load: Load::Idle };
         self.search.sent.clear();
     }
 
@@ -751,16 +967,64 @@ impl App {
             MouseEventKind::ScrollUp => self.on_wheel(KeyCode::Up),
             MouseEventKind::ScrollDown => self.on_wheel(KeyCode::Down),
             MouseEventKind::Down(MouseButton::Left) if mouse.column < MENU_WIDTH => {
+                if self.on_player_click(mouse.column, mouse.row) {
+                    return;
+                }
                 let entry = usize::from(mouse.row.saturating_sub(MENU_FIRST_ROW));
                 if mouse.row >= MENU_FIRST_ROW && entry < Section::ALL.len() {
                     self.section = Section::ALL[entry];
+                    self.player_open = false;
                 }
             }
             _ => {}
         }
     }
 
+    /// Rows of the small player for the current terminal height.
+    #[must_use]
+    pub fn player_rows(&self) -> u16 {
+        if self.terminal_height >= METER_FROM_HEIGHT { PLAYER_ROWS } else { PLAYER_ROWS_SHORT }
+    }
+
+    /// A click on the small player: its buttons, its progress bar, or the player itself.
+    fn on_player_click(&mut self, column: u16, row: u16) -> bool {
+        if !self.shows_mini_player() || self.terminal_height == 0 {
+            return false;
+        }
+        let rows = self.player_rows();
+        let top = self.terminal_height.saturating_sub(1 + rows);
+        if row < top || row >= top + rows {
+            return false;
+        }
+        // Rows inside the block, counted from its last: tempo, keys, buttons, gap, chapter, times, bar.
+        let from_bottom = top + rows - 1 - row;
+        match from_bottom {
+            2 | 3 => self.transport(match column {
+                0..=4 => Transport::PreviousChapter,
+                5..=9 => Transport::Toggle,
+                10..=13 => Transport::Stop,
+                14..=18 => Transport::NextChapter,
+                _ => Transport::NextEpisode,
+            }),
+            7 => {
+                let duration = self.playback.now.as_ref().and_then(|now| now.duration_ms);
+                if let (Some(duration), 2..=23) = (duration, column) {
+                    self.transport(Transport::SeekTo(duration * u64::from(column - 2) / 22));
+                }
+            }
+            _ => {
+                self.player_open = true;
+                self.player_chapter = self.playback.now.as_ref().and_then(|now| now.chapter_index()).unwrap_or(0);
+            }
+        }
+        true
+    }
+
     fn on_wheel(&mut self, code: KeyCode) {
+        if self.player_open {
+            self.on_player_key(code);
+            return;
+        }
         match self.section {
             Section::Discover => {
                 // The wheel moves what is shown, never the text being typed.
@@ -769,6 +1033,7 @@ impl App {
                 }
                 self.on_discover_key(code);
             }
+            Section::UpNext => self.on_up_next_key(code),
             Section::Settings => self.on_settings_key(code),
             Section::Help => {}
         }

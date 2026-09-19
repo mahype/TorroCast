@@ -8,11 +8,8 @@ use std::time::Duration;
 
 /// Directories refuse generic agents (Podcast Index answers 403), and hosters
 /// count downloads by agent: say who we are.
-pub const USER_AGENT: &str = concat!(
-    "TorroCast/",
-    env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/mahype/TorroCast)"
-);
+pub const USER_AGENT: &str =
+    concat!("TorroCast/", env!("CARGO_PKG_VERSION"), " (+https://github.com/mahype/TorroCast)");
 
 /// Feeds of long-running shows reach several megabytes; beyond this something is wrong.
 pub const MAX_BODY: u64 = 32 * 1024 * 1024;
@@ -101,12 +98,7 @@ impl Fetch for HttpClient {
     }
 
     fn get_range(&self, url: &str, start: u64, end: u64) -> Result<Vec<u8>, FetchError> {
-        let response = self
-            .agent
-            .get(url)
-            .set("Range", &format!("bytes={start}-{end}"))
-            .call()
-            .map_err(translate)?;
+        let response = self.agent.get(url).set("Range", &format!("bytes={start}-{end}")).call().map_err(translate)?;
         // A server that ignores the range sends the whole episode with 200.
         // Reading that would be the download we set out to avoid.
         if response.status() != 206 {

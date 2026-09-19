@@ -6,14 +6,14 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use ratatui::crossterm::execute;
 use torrocast_core::settings::{Platform, config_file};
-use torrocast_core::{Core, Settings};
+use torrocast_core::{Core, OutputKind, Settings};
 use torrocast_net::HttpClient;
 use torrocast_tui::app::App;
 use torrocast_tui::i18n::Lang;
 use torrocast_tui::ui;
 
 /// Short enough that an answer from the core shows up without a key press.
-const POLL: Duration = Duration::from_millis(100);
+const POLL: Duration = Duration::from_millis(50);
 
 fn main() -> std::io::Result<()> {
     if std::env::args().any(|argument| argument == "--version" || argument == "-V") {
@@ -29,11 +29,14 @@ fn main() -> std::io::Result<()> {
         .unwrap_or_default();
     // Without a place for the file the settings last for this run only.
     let file = config_file(Platform::current(), &environment);
-    let settings = file
-        .as_deref()
-        .map_or_else(|| Settings::for_locale(&locale), |file| Settings::load(file, &locale));
+    let settings = file.as_deref().map_or_else(|| Settings::for_locale(&locale), |file| Settings::load(file, &locale));
 
-    let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone());
+    // `TORROCAST_OUTPUT=muted` plays without a sound card, in real time — for trying things out in silence.
+    let output = match environment.get("TORROCAST_OUTPUT").map(String::as_str) {
+        Some("muted") => OutputKind::Muted,
+        _ => OutputKind::Device,
+    };
+    let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone(), output);
     let mut app = App::new(Lang::from_locale(&locale), settings);
 
     let mut terminal = ratatui::init();
@@ -50,6 +53,7 @@ fn main() -> std::io::Result<()> {
                 break Err(error);
             }
         }
+        app.terminal_height = terminal.size().map_or(0, |size| size.height);
         if let Err(error) = terminal.draw(|frame| ui::draw(frame, &app)) {
             break Err(error);
         }
@@ -65,6 +69,7 @@ fn main() -> std::io::Result<()> {
             Err(error) => break Err(error),
         }
         app.tick(Instant::now());
+        core.pump();
         while let Ok(event) = events.try_recv() {
             app.on_event(event);
         }

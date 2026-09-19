@@ -41,14 +41,7 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App, view: &EpisodeView) {
         Line::styled(fit(&episode.title, width).trim_end().to_owned(), theme::bold()),
         Line::styled(facts.join(" · "), theme::muted()),
     ];
-    frame.render_widget(
-        Paragraph::new(lines),
-        Rect {
-            x: inner.x + 1,
-            width: inner.width.saturating_sub(2),
-            ..inner
-        },
-    );
+    frame.render_widget(Paragraph::new(lines), Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner });
 
     let has_chapters = !view.listed_chapters().is_empty() || view.looking.is_some();
     let (notes_area, chapters_area) = match (has_chapters, is_wide(area)) {
@@ -77,20 +70,9 @@ fn draw_notes(frame: &mut Frame<'_>, area: Rect, app: &App, view: &EpisodeView) 
     let block = panel(lang.t("Show notes"), view.focus == Focus::Notes);
     let inner = block.inner(area);
     frame.render_widget(block, area);
-    let inner = Rect {
-        x: inner.x + 1,
-        width: inner.width.saturating_sub(2),
-        ..inner
-    };
+    let inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
     if view.notes.blocks.is_empty() {
-        empty(
-            frame,
-            Rect {
-                y: inner.y.saturating_sub(1),
-                ..inner
-            },
-            &[lang.t("This episode has no show notes.")],
-        );
+        empty(frame, Rect { y: inner.y.saturating_sub(1), ..inner }, &[lang.t("This episode has no show notes.")]);
         return;
     }
     let lines = notes(lang, &view.notes, usize::from(inner.width));
@@ -133,25 +115,15 @@ fn draw_chapters(frame: &mut Frame<'_>, area: Rect, app: &App, view: &EpisodeVie
         .take(height)
         .map(|(index, chapter)| {
             let chosen = index == view.chapter_index && view.focus == Focus::Chapters;
-            let background = if chosen {
-                Style::new().bg(theme::SELECTION)
-            } else {
-                Style::new()
-            };
+            let background = if chosen { Style::new().bg(theme::SELECTION) } else { Style::new() };
             let title_width = width.saturating_sub(14);
             Line::from(vec![
-                Span::styled(
-                    format!(" {}  ", timestamp(chapter.start_ms)),
-                    background.fg(theme::MUTED),
-                ),
+                Span::styled(format!(" {}  ", timestamp(chapter.start_ms)), background.fg(theme::MUTED)),
                 Span::styled(
                     fit(chapter.title.as_deref().unwrap_or("—"), title_width),
                     if chosen { theme::selected() } else { Style::new() },
                 ),
-                Span::styled(
-                    if chapter.url.is_some() { " ↗ " } else { "   " },
-                    background.fg(theme::CYAN),
-                ),
+                Span::styled(if chapter.url.is_some() { " ↗ " } else { "   " }, background.fg(theme::CYAN)),
             ])
         })
         .collect();

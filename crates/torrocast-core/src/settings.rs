@@ -23,10 +23,7 @@ pub struct Sources {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            country: "us".to_owned(),
-            sources: Sources::default(),
-        }
+        Self { country: "us".to_owned(), sources: Sources::default() }
     }
 }
 
@@ -43,10 +40,7 @@ impl Settings {
             .and_then(|language| language.split_once('_'))
             .map(|(_, country)| country.to_lowercase())
             .filter(|country| country.len() == 2 && country.chars().all(|letter| letter.is_ascii_lowercase()));
-        Self {
-            country: country.unwrap_or_else(|| "us".to_owned()),
-            ..Self::default()
-        }
+        Self { country: country.unwrap_or_else(|| "us".to_owned()), ..Self::default() }
     }
 
     /// A missing or unreadable file means defaults — never a refusal to start.
@@ -94,21 +88,13 @@ impl Platform {
 /// every platform's answer can be tested on any machine.
 #[must_use]
 pub fn config_file(platform: Platform, environment: &HashMap<String, String>) -> Option<PathBuf> {
-    let variable = |name: &str| {
-        environment
-            .get(name)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-    };
+    let variable = |name: &str| environment.get(name).filter(|value| !value.is_empty()).map(PathBuf::from);
     let directory = match platform {
-        Platform::Linux => variable("XDG_CONFIG_HOME")
-            .or_else(|| Some(variable("HOME")?.join(".config")))?
-            .join("torrocast"),
+        Platform::Linux => {
+            variable("XDG_CONFIG_HOME").or_else(|| Some(variable("HOME")?.join(".config")))?.join("torrocast")
+        }
         // The same place a native app will use, so neither has to move later.
-        Platform::MacOs => variable("HOME")?
-            .join("Library")
-            .join("Application Support")
-            .join("TorroCast"),
+        Platform::MacOs => variable("HOME")?.join("Library").join("Application Support").join("TorroCast"),
         Platform::Windows => variable("APPDATA")?.join("TorroCast"),
     };
     Some(directory.join("config.toml"))
@@ -122,30 +108,19 @@ mod tests {
     use super::{Platform, Settings, config_file};
 
     fn environment(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs
-            .iter()
-            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
-            .collect()
+        pairs.iter().map(|(name, value)| ((*name).to_owned(), (*value).to_owned())).collect()
     }
 
     #[test]
     fn every_platform_has_its_place() {
         let home = environment(&[("HOME", "/home/ada")]);
-        assert_eq!(
-            config_file(Platform::Linux, &home),
-            Some(PathBuf::from("/home/ada/.config/torrocast/config.toml"))
-        );
+        assert_eq!(config_file(Platform::Linux, &home), Some(PathBuf::from("/home/ada/.config/torrocast/config.toml")));
         assert_eq!(
             config_file(Platform::MacOs, &home),
-            Some(PathBuf::from(
-                "/home/ada/Library/Application Support/TorroCast/config.toml"
-            ))
+            Some(PathBuf::from("/home/ada/Library/Application Support/TorroCast/config.toml"))
         );
         let xdg = environment(&[("HOME", "/home/ada"), ("XDG_CONFIG_HOME", "/cfg")]);
-        assert_eq!(
-            config_file(Platform::Linux, &xdg),
-            Some(PathBuf::from("/cfg/torrocast/config.toml"))
-        );
+        assert_eq!(config_file(Platform::Linux, &xdg), Some(PathBuf::from("/cfg/torrocast/config.toml")));
         assert_eq!(config_file(Platform::Windows, &home), None, "no APPDATA, no guess");
     }
 

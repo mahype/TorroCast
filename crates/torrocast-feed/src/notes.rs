@@ -69,11 +69,7 @@ impl Builder {
             Some((_, collected)) => collected,
             None => &mut self.text,
         };
-        let text = if buffer.ends_with(' ') {
-            text.trim_start_matches(' ')
-        } else {
-            text
-        };
+        let text = if buffer.ends_with(' ') { text.trim_start_matches(' ') } else { text };
         buffer.push_str(text);
     }
 
@@ -95,10 +91,7 @@ impl Builder {
                 self.inlines.push(Inline::Text(std::mem::take(&mut plain)));
             }
             let target = self.target(address);
-            self.inlines.push(Inline::Link {
-                text: display(address),
-                target,
-            });
+            self.inlines.push(Inline::Link { text: display(address), target });
             plain.push_str(&word[address.len()..]);
         }
         if !plain.is_empty() {
@@ -118,11 +111,7 @@ impl Builder {
         let text = collapse(&text);
         let text = text.trim();
         let target = self.target(&url);
-        let shown = if text.is_empty() || text == url {
-            display(&url)
-        } else {
-            text.to_owned()
-        };
+        let shown = if text.is_empty() || text == url { display(&url) } else { text.to_owned() };
         self.inlines.push(Inline::Link { text: shown, target });
     }
 
@@ -201,10 +190,7 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
             let value = value.trim_start();
             let value = match value.chars().next() {
                 Some(quote @ ('"' | '\'')) => value[1..].split(quote).next().unwrap_or(""),
-                _ => value
-                    .split(|character: char| character.is_whitespace() || character == '>')
-                    .next()
-                    .unwrap_or(""),
+                _ => value.split(|character: char| character.is_whitespace() || character == '>').next().unwrap_or(""),
             };
             return Some(decode(value.trim()));
         }
@@ -325,31 +311,19 @@ mod tests {
             <script>alert("no")</script><!-- nor this -->"#;
         let notes = document(html);
 
-        assert_eq!(
-            notes.links,
-            vec!["https://lagedernation.org/live", "https://example.org/a"]
-        );
+        assert_eq!(notes.links, vec!["https://lagedernation.org/live", "https://example.org/a"]);
         assert_eq!(
             notes.blocks[0],
             Block::Paragraph(vec![
                 text("Wir sind live in Leipzig – "),
-                Inline::Link {
-                    text: "Karten".into(),
-                    target: 0
-                },
+                Inline::Link { text: "Karten".into(), target: 0 },
                 text(".")
             ])
         );
         assert_eq!(notes.blocks[1], Block::Heading(vec![text("Haushalt")]));
         assert_eq!(
             notes.blocks[2],
-            Block::Item(vec![
-                text("Beschluss "),
-                Inline::Link {
-                    text: "hier".into(),
-                    target: 1
-                }
-            ])
+            Block::Item(vec![text("Beschluss "), Inline::Link { text: "hier".into(), target: 1 }])
         );
         assert!(
             matches!(&notes.blocks[3], Block::Item(inlines) if inlines[1] == Inline::Link { text: "Karten".into(), target: 0 })
@@ -365,10 +339,7 @@ mod tests {
             notes.blocks[0],
             Block::Paragraph(vec![
                 text("Mehr unter "),
-                Inline::Link {
-                    text: "example.org/thema".into(),
-                    target: 0
-                },
+                Inline::Link { text: "example.org/thema".into(), target: 0 },
                 text(", danke.")
             ])
         );
@@ -380,10 +351,7 @@ mod tests {
         let notes = document("Erste Zeile\n\nZweite &amp; letzte");
         assert_eq!(
             notes.blocks,
-            vec![
-                Block::Paragraph(vec![text("Erste Zeile")]),
-                Block::Paragraph(vec![text("Zweite & letzte")])
-            ]
+            vec![Block::Paragraph(vec![text("Erste Zeile")]), Block::Paragraph(vec![text("Zweite & letzte")])]
         );
     }
 

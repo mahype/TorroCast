@@ -20,21 +20,29 @@ fn value(json: &str) -> serde_json::Value {
 #[test]
 fn apple_search_finds_the_feed() {
     let results = apple::parse_results(&value(SEARCH));
-    let show = results
-        .iter()
-        .find(|show| show.title.starts_with("Lage der Nation"))
-        .expect("the show is in the fixture");
-    assert_eq!(
-        show.feed_url.as_deref(),
-        Some("https://feeds.lagedernation.org/feeds/ldn-mp3.xml")
-    );
+    let show =
+        results.iter().find(|show| show.title.starts_with("Lage der Nation")).expect("the show is in the fixture");
+    assert_eq!(show.feed_url.as_deref(), Some("https://feeds.lagedernation.org/feeds/ldn-mp3.xml"));
     assert_eq!(show.itunes_id, Some(1_092_957_894));
     assert!(show.genres.contains(&"Politik".to_owned()));
-    assert!(
-        !show.genres.contains(&"Podcasts".to_owned()),
-        "the genre every podcast has says nothing"
-    );
+    assert!(!show.genres.contains(&"Podcasts".to_owned()), "the genre every podcast has says nothing");
     assert_eq!(show.sources, vec![ProviderId::Apple]);
+}
+
+#[test]
+fn episode_search_brings_what_playing_needs() {
+    let answer = value(
+        r#"{"results":[
+        {"kind":"podcast-episode","trackName":"Aufstand gegen das Rentenpaket","collectionName":"Was jetzt?",
+         "episodeGuid":"a68bffc5","feedUrl":"https://feeds.example/wj","episodeUrl":"https://cdn.example/wj.mp3",
+         "trackTimeMillis":683000,"releaseDate":"2026-08-05T15:23:53Z","shortDescription":"Kurz."},
+        {"kind":"podcast-episode","trackName":"Ohne Audio","collectionName":"Stumm"}]}"#,
+    );
+    let episodes = apple::parse_episodes(&answer);
+    assert_eq!(episodes.len(), 1, "an episode without audio cannot be played and is left out");
+    assert_eq!(episodes[0].audio_url, "https://cdn.example/wj.mp3");
+    assert_eq!(episodes[0].duration_ms, Some(683_000));
+    assert_eq!(episodes[0].guid.as_deref(), Some("a68bffc5"));
 }
 
 #[test]
@@ -43,19 +51,13 @@ fn both_chart_formats_name_the_same_leader() {
     let by_genre = apple::parse_genre_chart(&value(GENRE_CHART));
     assert_eq!(documented[0].itunes_id, Some(1_700_432_142));
     assert_eq!(by_genre[0].itunes_id, Some(1_700_432_142));
-    assert!(
-        documented.iter().all(|entry| entry.feed_url.is_none()),
-        "charts carry no feeds; the lookup adds them"
-    );
+    assert!(documented.iter().all(|entry| entry.feed_url.is_none()), "charts carry no feeds; the lookup adds them");
 }
 
 #[test]
 fn fyyd_brings_what_apple_leaves_out() {
     let results = fyyd::parse_search(&value(FYYD));
-    assert_eq!(
-        results[0].feed_url.as_deref(),
-        Some("https://feeds.lagedernation.org/feeds/ldn-mp3.xml")
-    );
+    assert_eq!(results[0].feed_url.as_deref(), Some("https://feeds.lagedernation.org/feeds/ldn-mp3.xml"));
     assert_eq!(results[0].language.as_deref(), Some("de"));
     assert!(results[0].description.is_some());
 }
@@ -97,10 +99,7 @@ fn charts_keep_their_order_and_gain_feeds() {
 
     assert_eq!(chart[0].title, "RONZHEIMER.");
     assert_eq!(chart[0].feed_url.as_deref(), Some("https://r.example/feed"));
-    assert!(
-        chart[1].feed_url.is_none(),
-        "a show the lookup does not know keeps its chart entry"
-    );
+    assert!(chart[1].feed_url.is_none(), "a show the lookup does not know keeps its chart entry");
     let asked = canned.asked.lock().expect("no poisoning in tests");
     assert_eq!(asked.len(), 2, "one call for the chart, one for all feeds");
     assert!(asked[0].contains("/de/"), "Apple wants the country in lower case");
@@ -108,16 +107,10 @@ fn charts_keep_their_order_and_gain_feeds() {
 
 #[test]
 fn apple_stops_before_the_limit() {
-    let canned = Canned {
-        answers: HashMap::from([("https://itunes.apple.com/search", SEARCH)]),
-        asked: Mutex::new(Vec::new()),
-    };
+    let canned =
+        Canned { answers: HashMap::from([("https://itunes.apple.com/search", SEARCH)]), asked: Mutex::new(Vec::new()) };
     let apple = Apple::default();
     let refused = (0..25).filter(|_| apple.search(&canned, "lage", "de").is_err()).count();
     assert_eq!(refused, 7);
-    assert_eq!(
-        canned.asked.lock().expect("no poisoning in tests").len(),
-        18,
-        "a refused search sends nothing"
-    );
+    assert_eq!(canned.asked.lock().expect("no poisoning in tests").len(), 18, "a refused search sends nothing");
 }

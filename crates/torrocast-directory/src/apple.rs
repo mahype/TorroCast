@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use torrocast_net::{Fetch, encode};
 
-use crate::{Category, DirectoryError, DirectoryProvider, PodcastRef, ProviderId, json, text};
+use crate::{Category, DirectoryError, DirectoryProvider, EpisodeRef, PodcastRef, ProviderId, json, text};
 
 const PODCASTS_GENRE: u32 = 26;
 const CHART_SIZE: u32 = 50;
@@ -29,10 +29,7 @@ impl Budget {
             return Ok(());
         };
         let now = Instant::now();
-        while calls
-            .front()
-            .is_some_and(|call| now.duration_since(*call) > Self::WINDOW)
-        {
+        while calls.front().is_some_and(|call| now.duration_since(*call) > Self::WINDOW) {
             calls.pop_front();
         }
         if calls.len() >= Self::CALLS {
@@ -49,11 +46,7 @@ pub struct Apple {
 
 impl Default for Apple {
     fn default() -> Self {
-        Self {
-            budget: Budget {
-                calls: Mutex::new(VecDeque::new()),
-            },
-        }
+        Self { budget: Budget { calls: Mutex::new(VecDeque::new()) } }
     }
 }
 
@@ -70,19 +63,12 @@ impl Apple {
         ranked: Vec<PodcastRef>,
         country: &str,
     ) -> Result<Vec<PodcastRef>, DirectoryError> {
-        let ids: Vec<String> = ranked
-            .iter()
-            .filter_map(|podcast| podcast.itunes_id)
-            .map(|id| id.to_string())
-            .collect();
+        let ids: Vec<String> = ranked.iter().filter_map(|podcast| podcast.itunes_id).map(|id| id.to_string()).collect();
         if ids.is_empty() {
             return Ok(ranked);
         }
-        let url = format!(
-            "https://itunes.apple.com/lookup?id={}&country={}&entity=podcast",
-            ids.join(","),
-            encode(country)
-        );
+        let url =
+            format!("https://itunes.apple.com/lookup?id={}&country={}&entity=podcast", ids.join(","), encode(country));
         let answer = self.call(fetch, &url)?;
         let mut details: HashMap<u64, PodcastRef> = parse_results(&answer)
             .into_iter()
@@ -108,6 +94,20 @@ impl DirectoryProvider for Apple {
             encode(country)
         );
         Ok(parse_results(&self.call(fetch, &url)?))
+    }
+
+    fn search_episodes(
+        &self,
+        fetch: &dyn Fetch,
+        query: &str,
+        country: &str,
+    ) -> Result<Vec<EpisodeRef>, DirectoryError> {
+        let url = format!(
+            "https://itunes.apple.com/search?media=podcast&entity=podcastEpisode&limit=50&term={}&country={}",
+            encode(query),
+            encode(country)
+        );
+        Ok(parse_episodes(&self.call(fetch, &url)?))
     }
 
     fn charts(
@@ -144,9 +144,7 @@ impl DirectoryProvider for Apple {
 }
 
 fn number(value: &Value) -> Option<u64> {
-    value
-        .as_u64()
-        .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+    value.as_u64().or_else(|| value.as_str().and_then(|text| text.parse().ok()))
 }
 
 /// The answer of `search` and `lookup`.
@@ -162,13 +160,7 @@ pub fn parse_results(answer: &Value) -> Vec<PodcastRef> {
             let title = text(&entry["collectionName"]).or_else(|| text(&entry["trackName"]))?;
             let genres = entry["genres"]
                 .as_array()
-                .map(|genres| {
-                    genres
-                        .iter()
-                        .filter_map(text)
-                        .filter(|genre| genre != "Podcasts")
-                        .collect()
-                })
+                .map(|genres| genres.iter().filter_map(text).filter(|genre| genre != "Podcasts").collect())
                 .unwrap_or_default();
             Some(PodcastRef {
                 title,
@@ -185,6 +177,32 @@ pub fn parse_results(answer: &Value) -> Vec<PodcastRef> {
                 description: None,
                 language: None,
                 sources: vec![ProviderId::Apple],
+            })
+        })
+        .collect()
+}
+
+/// The answer of `search` with `entity=podcastEpisode`. Episodes without an
+/// audio address are left out: they could be listed but never played.
+#[must_use]
+pub fn parse_episodes(answer: &Value) -> Vec<EpisodeRef> {
+    let Some(results) = answer["results"].as_array() else {
+        return Vec::new();
+    };
+    results
+        .iter()
+        .filter_map(|entry| {
+            Some(EpisodeRef {
+                title: text(&entry["trackName"])?,
+                podcast: text(&entry["collectionName"]).unwrap_or_default(),
+                feed_url: text(&entry["feedUrl"]),
+                guid: text(&entry["episodeGuid"]),
+                audio_url: text(&entry["episodeUrl"])?,
+                duration_ms: number(&entry["trackTimeMillis"]),
+                published: text(&entry["releaseDate"])
+                    .and_then(|date| DateTime::parse_from_rfc3339(&date).ok())
+                    .map(|date| date.with_timezone(&Utc)),
+                description: text(&entry["shortDescription"]).or_else(|| text(&entry["description"])),
             })
         })
         .collect()

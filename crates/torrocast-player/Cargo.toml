@@ -1,0 +1,19 @@
+[package]
+name = "torrocast-player"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Playback for TorroCast: streaming, decoding, tempo without changing the pitch, and the sound card."
+
+[lints]
+workspace = true
+
+[dependencies]
+torrocast-net = { path = "../torrocast-net" }
+cpal = "0.16"
+rtrb = "0.3"
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "aac", "isomp4", "vorbis", "ogg", "flac", "wav", "pcm"] }
+tempfile = "3"
+ureq = "2"

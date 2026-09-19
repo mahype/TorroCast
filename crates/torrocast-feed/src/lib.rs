@@ -87,11 +87,7 @@ impl Enclosure {
     #[must_use]
     pub fn is_mp3(&self) -> bool {
         let path = self.url.split(['?', '#']).next().unwrap_or(&self.url).to_lowercase();
-        path.ends_with(".mp3")
-            || self
-                .mime
-                .as_deref()
-                .is_some_and(|mime| mime.eq_ignore_ascii_case("audio/mpeg"))
+        path.ends_with(".mp3") || self.mime.as_deref().is_some_and(|mime| mime.eq_ignore_ascii_case("audio/mpeg"))
     }
 }
 

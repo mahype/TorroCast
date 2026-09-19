@@ -2,6 +2,7 @@
 //! reads [`Event`]s; everything slow happens on worker threads in between.
 //! Nothing here knows what a terminal is.
 
+pub mod playback;
 pub mod settings;
 
 use std::collections::HashMap;
@@ -9,17 +10,22 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use playback::{Action, Playback};
+use torrocast_player::{Media, Player, PlayerEvent};
+
 use torrocast_directory::apple::Apple;
 use torrocast_directory::fyyd::Fyyd;
 use torrocast_directory::{DirectoryError, DirectoryProvider};
 use torrocast_feed::chapters;
 use torrocast_net::{Fetch, FetchError};
 
+pub use playback::{NowPlaying, QueueItem, Status};
 pub use settings::Settings;
-pub use torrocast_directory::{Category, PodcastRef, ProviderId, merge};
+pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merge};
 pub use torrocast_feed::chapters::merge as merge_chapters;
 pub use torrocast_feed::notes::{self, Block, Document, Inline};
 pub use torrocast_feed::{Chapter, ChapterSource, Episode, Podcast};
+pub use torrocast_player::OutputKind;
 
 /// Tags larger than this are cover art with chapters attached; not worth the traffic.
 const MAX_TAG_BYTES: u64 = 3 * 1024 * 1024;
@@ -61,9 +67,14 @@ impl From<DirectoryError> for Problem {
 
 /// `request` numbers are chosen by the caller and come back on the answer, so
 /// an answer that arrives after the user has moved on can be recognised.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     Search {
+        request: u64,
+        query: String,
+    },
+    /// Episodes instead of shows. Apple only.
+    SearchEpisodes {
         request: u64,
         query: String,
     },
@@ -84,6 +95,34 @@ pub enum Command {
         chapters_url: Option<String>,
         mp3_url: Option<String>,
     },
+    Transport(Transport),
+}
+
+/// Everything that concerns what is heard and what comes next.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Transport {
+    /// Play this now; what was playing moves to the top of Up Next.
+    PlayNow(QueueItem),
+    /// To the top of Up Next (`first`) or to its end.
+    Enqueue {
+        item: QueueItem,
+        first: bool,
+    },
+    PlayQueued(usize),
+    Remove(usize),
+    Shift {
+        index: usize,
+        down: bool,
+    },
+    Clear,
+    Toggle,
+    Stop,
+    NextEpisode,
+    NextChapter,
+    PreviousChapter,
+    SeekBy(i64),
+    SeekTo(u64),
+    SpeedBy(f32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -93,6 +132,10 @@ pub enum Event {
         request: u64,
         provider: ProviderId,
         outcome: Result<Vec<PodcastRef>, Problem>,
+    },
+    EpisodeResults {
+        request: u64,
+        outcome: Result<Vec<EpisodeRef>, Problem>,
     },
     Charts {
         request: u64,
@@ -109,6 +152,22 @@ pub enum Event {
         request: u64,
         chapters: Vec<Chapter>,
     },
+    /// The whole truth about playback, sent whenever any of it changed.
+    Playback(Box<PlaybackState>),
+    /// How loud the moment being heard is, 0 to 1 — about twenty a second.
+    Level(f32),
+    /// An episode went to Up Next at this place, or (`None`) came out of it.
+    Queued {
+        title: String,
+        place: Option<usize>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PlaybackState {
+    pub now: Option<NowPlaying>,
+    pub up_next: Vec<QueueItem>,
+    pub speed: f32,
 }
 
 struct Shared {
@@ -118,31 +177,36 @@ struct Shared {
     feeds: Mutex<HashMap<String, Arc<Podcast>>>,
 }
 
+/// Chapters found for the playing episode, by [`QueueItem::key`].
+type Found = (String, Vec<Chapter>);
+
 pub struct Core {
     shared: Arc<Shared>,
     settings: Settings,
     events: Sender<Event>,
+    output: OutputKind,
+    playback: Playback,
+    /// Opened with the first episode, so browsing never touches the sound card.
+    player: Option<(Player, Receiver<PlayerEvent>)>,
+    found: (Sender<Found>, Receiver<Found>),
 }
 
 impl Core {
     /// The core and the channel its events arrive on.
     #[must_use]
-    pub fn new(fetch: Arc<dyn Fetch>, settings: Settings) -> (Self, Receiver<Event>) {
+    pub fn new(fetch: Arc<dyn Fetch>, settings: Settings, output: OutputKind) -> (Self, Receiver<Event>) {
         let (events, receiver) = channel();
-        let shared = Shared {
-            fetch,
-            apple: Apple::default(),
-            fyyd: Fyyd,
-            feeds: Mutex::new(HashMap::new()),
+        let shared = Shared { fetch, apple: Apple::default(), fyyd: Fyyd, feeds: Mutex::new(HashMap::new()) };
+        let core = Self {
+            shared: Arc::new(shared),
+            settings,
+            events,
+            output,
+            playback: Playback::default(),
+            player: None,
+            found: channel(),
         };
-        (
-            Self {
-                shared: Arc::new(shared),
-                settings,
-                events,
-            },
-            receiver,
-        )
+        (core, receiver)
     }
 
     pub fn set_settings(&mut self, settings: Settings) {
@@ -160,7 +224,7 @@ impl Core {
     }
 
     /// Returns at once; the answer arrives as an [`Event`].
-    pub fn send(&self, command: Command) {
+    pub fn send(&mut self, command: Command) {
         let country = self.settings.country.clone();
         match command {
             Command::Search { request, query } => {
@@ -172,61 +236,134 @@ impl Core {
                             ProviderId::Apple => &shared.apple,
                             ProviderId::Fyyd => &shared.fyyd,
                         };
-                        let outcome = directory
-                            .search(shared.fetch.as_ref(), &query, &country)
-                            .map_err(Problem::from);
-                        Event::SearchBatch {
-                            request,
-                            provider,
-                            outcome,
-                        }
+                        let outcome = directory.search(shared.fetch.as_ref(), &query, &country).map_err(Problem::from);
+                        Event::SearchBatch { request, provider, outcome }
                     });
                 }
             }
+            Command::SearchEpisodes { request, query } => self.spawn(move |shared| {
+                let outcome =
+                    shared.apple.search_episodes(shared.fetch.as_ref(), &query, &country).map_err(Problem::from);
+                Event::EpisodeResults { request, outcome }
+            }),
+            Command::Transport(transport) => self.transport(transport),
             Command::Charts { request, category } => self.spawn(move |shared| {
-                let outcome = shared
-                    .apple
-                    .charts(shared.fetch.as_ref(), &country, category)
-                    .map_err(Problem::from);
+                let outcome = shared.apple.charts(shared.fetch.as_ref(), &country, category).map_err(Problem::from);
                 Event::Charts { request, outcome }
             }),
             Command::Categories => self.spawn(move |shared| {
-                let outcome = shared
-                    .apple
-                    .categories(shared.fetch.as_ref(), &country)
-                    .map_err(Problem::from);
+                let outcome = shared.apple.categories(shared.fetch.as_ref(), &country).map_err(Problem::from);
                 Event::Categories { outcome }
             }),
-            Command::OpenFeed {
-                request,
-                feed_url,
-                reload,
-            } => {
-                self.spawn(move |shared| Event::Feed {
-                    request,
-                    outcome: open_feed(shared, &feed_url, reload),
-                });
+            Command::OpenFeed { request, feed_url, reload } => {
+                self.spawn(move |shared| Event::Feed { request, outcome: open_feed(shared, &feed_url, reload) });
             }
-            Command::Chapters {
+            Command::Chapters { request, chapters_url, mp3_url } => self.spawn(move |shared| Event::Chapters {
                 request,
-                chapters_url,
-                mp3_url,
-            } => self.spawn(move |shared| {
-                let fetch = shared.fetch.as_ref();
-                let mut found = chapters_url
-                    .and_then(|url| fetch.get(&url).ok())
-                    .and_then(|body| chapters::parse_json(&body).ok())
-                    .unwrap_or_default();
-                if found.is_empty()
-                    && let Some(url) = mp3_url
-                {
-                    found = embedded_chapters(fetch, &url);
-                }
-                Event::Chapters {
-                    request,
-                    chapters: found,
-                }
+                chapters: find_chapters(shared.fetch.as_ref(), chapters_url, mp3_url),
             }),
+        }
+    }
+
+    fn transport(&mut self, transport: Transport) {
+        let actions = match transport {
+            Transport::PlayNow(item) => self.playback.play_now(item),
+            Transport::Enqueue { item, first } => {
+                let title = item.title.clone();
+                let (place, actions) = self.playback.enqueue(item, first);
+                let _ = self.events.send(Event::Queued { title, place });
+                actions
+            }
+            Transport::PlayQueued(index) => self.playback.play_queued(index),
+            Transport::Remove(index) => {
+                self.playback.remove(index);
+                Vec::new()
+            }
+            Transport::Shift { index, down } => {
+                self.playback.shift(index, down);
+                Vec::new()
+            }
+            Transport::Clear => {
+                self.playback.clear();
+                Vec::new()
+            }
+            Transport::Toggle => self.playback.toggle(),
+            Transport::Stop => self.playback.stop(),
+            Transport::NextEpisode => self.playback.next_episode(),
+            Transport::NextChapter => self.playback.next_chapter(),
+            Transport::PreviousChapter => self.playback.previous_chapter(),
+            Transport::SeekBy(delta_ms) => self.playback.seek_by(delta_ms),
+            Transport::SeekTo(position_ms) => self.playback.seek_to(position_ms),
+            Transport::SpeedBy(delta) => self.playback.change_speed(delta),
+        };
+        self.carry_out(actions);
+        self.publish();
+    }
+
+    fn carry_out(&mut self, actions: Vec<Action>) {
+        for action in actions {
+            if let Action::FindChapters { key, chapters_url, mp3_url } = action {
+                let (shared, found) = (Arc::clone(&self.shared), self.found.0.clone());
+                thread::spawn(move || {
+                    let _ = found.send((key, find_chapters(shared.fetch.as_ref(), chapters_url, mp3_url)));
+                });
+                continue;
+            }
+            let output = self.output;
+            let (player, _) = self.player.get_or_insert_with(|| Player::new(output));
+            match action {
+                Action::Load { audio_url, start_ms } => {
+                    player.set_speed(self.playback.speed);
+                    player.load(Media::Url(audio_url), start_ms);
+                }
+                Action::Pause => player.pause(),
+                Action::Resume => player.resume(),
+                Action::Seek(position_ms) => player.seek(position_ms),
+                Action::Speed(speed) => player.set_speed(speed),
+                Action::Stop => player.stop(),
+                Action::FindChapters { .. } => {}
+            }
+        }
+    }
+
+    fn publish(&self) {
+        let state = PlaybackState {
+            now: self.playback.now.clone(),
+            up_next: self.playback.up_next.clone(),
+            speed: self.playback.speed,
+        };
+        let _ = self.events.send(Event::Playback(Box::new(state)));
+    }
+
+    /// Takes in what the audio engine has reported since the last call. The
+    /// interface calls this on every turn of its loop.
+    pub fn pump(&mut self) {
+        let reports: Vec<PlayerEvent> =
+            self.player.as_ref().map(|(_, events)| events.try_iter().collect()).unwrap_or_default();
+        let mut changed = false;
+        for report in reports {
+            match report {
+                PlayerEvent::Level(level) => {
+                    let _ = self.events.send(Event::Level(level));
+                    continue;
+                }
+                PlayerEvent::Started { duration_ms } => self.playback.on_started(duration_ms),
+                PlayerEvent::Position { position_ms, .. } => self.playback.on_position(position_ms),
+                PlayerEvent::Failed(reason) => self.playback.on_failed(reason),
+                PlayerEvent::Ended => {
+                    let actions = self.playback.on_ended();
+                    self.carry_out(actions);
+                }
+                PlayerEvent::Loading | PlayerEvent::Paused | PlayerEvent::Resumed | PlayerEvent::Stopped => {}
+            }
+            changed = true;
+        }
+        for (key, chapters) in self.found.1.try_iter().collect::<Vec<_>>() {
+            self.playback.set_chapters(&key, chapters);
+            changed = true;
+        }
+        if changed {
+            self.publish();
         }
     }
 
@@ -258,6 +395,54 @@ fn open_feed(shared: &Shared, feed_url: &str, reload: bool) -> Result<Arc<Podcas
     Ok(podcast)
 }
 
+/// Chapters from outside the feed: the JSON file first, the head of the MP3 otherwise.
+fn find_chapters(fetch: &dyn Fetch, chapters_url: Option<String>, mp3_url: Option<String>) -> Vec<Chapter> {
+    let found = chapters_url
+        .and_then(|url| fetch.get(&url).ok())
+        .and_then(|body| chapters::parse_json(&body).ok())
+        .unwrap_or_default();
+    match mp3_url {
+        Some(url) if found.is_empty() => embedded_chapters(fetch, &url),
+        _ => found,
+    }
+}
+
+impl QueueItem {
+    /// An episode of a feed, ready to be played. `None` when it has no audio.
+    #[must_use]
+    pub fn from_feed(podcast: &Podcast, feed_url: Option<&str>, episode: &Episode) -> Option<Self> {
+        let enclosure = episode.enclosure.as_ref()?;
+        Some(Self {
+            title: episode.title.clone(),
+            podcast: podcast.title.clone(),
+            feed_url: feed_url.map(str::to_owned),
+            guid: episode.guid.clone(),
+            audio_url: enclosure.url.clone(),
+            duration_ms: episode.duration_seconds.map(|seconds| u64::from(seconds) * 1000),
+            chapters: episode.chapters.clone(),
+            chapters_url: episode.chapters_url.clone(),
+            is_mp3: enclosure.is_mp3(),
+        })
+    }
+
+    /// An episode found by a directory's search.
+    #[must_use]
+    pub fn from_search(episode: &EpisodeRef) -> Self {
+        let path = episode.audio_url.split(['?', '#']).next().unwrap_or_default().to_lowercase();
+        Self {
+            title: episode.title.clone(),
+            podcast: episode.podcast.clone(),
+            feed_url: episode.feed_url.clone(),
+            guid: episode.guid.clone(),
+            audio_url: episode.audio_url.clone(),
+            duration_ms: episode.duration_ms,
+            chapters: Vec::new(),
+            chapters_url: None,
+            is_mp3: path.ends_with(".mp3"),
+        }
+    }
+}
+
 /// Feeds are UTF-8 with few exceptions, and the exceptions say so up front.
 fn decode_body(body: &[u8]) -> String {
     match std::str::from_utf8(body) {
@@ -276,20 +461,13 @@ fn decode_body(body: &[u8]) -> String {
 /// Reads the ID3 tag at the head of an MP3 — ten bytes to learn its size, then
 /// exactly the tag. The audio itself is never requested.
 fn embedded_chapters(fetch: &dyn Fetch, url: &str) -> Vec<Chapter> {
-    let Some(size) = fetch
-        .get_range(url, 0, 9)
-        .ok()
-        .and_then(|head| chapters::id3_tag_size(&head))
-    else {
+    let Some(size) = fetch.get_range(url, 0, 9).ok().and_then(|head| chapters::id3_tag_size(&head)) else {
         return Vec::new();
     };
     if size > MAX_TAG_BYTES {
         return Vec::new();
     }
-    fetch
-        .get_range(url, 0, size - 1)
-        .map(|tag| chapters::parse_id3(&tag))
-        .unwrap_or_default()
+    fetch.get_range(url, 0, size - 1).map(|tag| chapters::parse_id3(&tag)).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -328,12 +506,10 @@ mod tests {
     }
 
     fn core(fyyd: bool) -> (Core, std::sync::mpsc::Receiver<Event>, Arc<Canned>) {
-        let canned = Arc::new(Canned {
-            asked: Mutex::new(Vec::new()),
-        });
+        let canned = Arc::new(Canned { asked: Mutex::new(Vec::new()) });
         let mut settings = Settings::for_locale("de_DE");
         settings.sources.fyyd = fyyd;
-        let (core, events) = Core::new(Arc::clone(&canned) as Arc<dyn Fetch>, settings);
+        let (core, events) = Core::new(Arc::clone(&canned) as Arc<dyn Fetch>, settings, super::OutputKind::Null);
         (core, events, canned)
     }
 
@@ -343,20 +519,10 @@ mod tests {
 
     #[test]
     fn a_feed_is_fetched_once() {
-        let (core, events, canned) = core(false);
+        let (mut core, events, canned) = core(false);
         for request in 1..=2 {
-            core.send(Command::OpenFeed {
-                request,
-                feed_url: "https://show.example/feed".into(),
-                reload: false,
-            });
-            let Event::Feed {
-                request: answered,
-                outcome,
-            } = next(&events)
-            else {
-                panic!("expected a feed")
-            };
+            core.send(Command::OpenFeed { request, feed_url: "https://show.example/feed".into(), reload: false });
+            let Event::Feed { request: answered, outcome } = next(&events) else { panic!("expected a feed") };
             assert_eq!(answered, request);
             assert_eq!(outcome.expect("parses").episodes.len(), 1);
         }
@@ -365,40 +531,17 @@ mod tests {
 
     #[test]
     fn problems_have_names() {
-        let (core, events, _) = core(false);
-        core.send(Command::OpenFeed {
-            request: 1,
-            feed_url: "https://show.example/page".into(),
-            reload: false,
-        });
-        assert_eq!(
-            next(&events),
-            Event::Feed {
-                request: 1,
-                outcome: Err(Problem::NotAFeed)
-            }
-        );
-        core.send(Command::OpenFeed {
-            request: 2,
-            feed_url: "https://down.example".into(),
-            reload: false,
-        });
-        assert_eq!(
-            next(&events),
-            Event::Feed {
-                request: 2,
-                outcome: Err(Problem::Refused(503))
-            }
-        );
+        let (mut core, events, _) = core(false);
+        core.send(Command::OpenFeed { request: 1, feed_url: "https://show.example/page".into(), reload: false });
+        assert_eq!(next(&events), Event::Feed { request: 1, outcome: Err(Problem::NotAFeed) });
+        core.send(Command::OpenFeed { request: 2, feed_url: "https://down.example".into(), reload: false });
+        assert_eq!(next(&events), Event::Feed { request: 2, outcome: Err(Problem::Refused(503)) });
     }
 
     #[test]
     fn one_directory_failing_does_not_silence_the_other() {
-        let (core, events, _) = core(true);
-        core.send(Command::Search {
-            request: 7,
-            query: "found".into(),
-        });
+        let (mut core, events, _) = core(true);
+        core.send(Command::Search { request: 7, query: "found".into() });
         let mut answers = [next(&events), next(&events)];
         answers.sort_by_key(|event| match event {
             Event::SearchBatch { provider, .. } => *provider,
@@ -406,11 +549,7 @@ mod tests {
         });
         assert!(matches!(
             &answers[0],
-            Event::SearchBatch {
-                provider: ProviderId::Apple,
-                outcome: Err(Problem::Refused(503)),
-                ..
-            }
+            Event::SearchBatch { provider: ProviderId::Apple, outcome: Err(Problem::Refused(503)), .. }
         ));
         assert!(
             matches!(&answers[1], Event::SearchBatch { provider: ProviderId::Fyyd, outcome: Ok(found), .. } if found[0].title == "Found")

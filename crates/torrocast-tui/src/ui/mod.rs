@@ -4,8 +4,10 @@
 mod discover;
 mod episode;
 mod help;
+mod player;
 mod podcast;
 mod settings;
+mod upnext;
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Layout, Rect};
@@ -29,20 +31,31 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     }
     let [bar, body, hints] =
         Layout::vertical([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)]).areas(area);
-    let [menu, content] = Layout::horizontal([Constraint::Length(MENU_WIDTH), Constraint::Min(0)]).areas(body);
+    let [left, content] = Layout::horizontal([Constraint::Length(MENU_WIDTH), Constraint::Min(0)]).areas(body);
+    // The player lives below the menu, in the same column, on every screen.
+    let player_rows = if app.shows_mini_player() { app.player_rows() } else { 0 };
+    let [menu, mini] = Layout::vertical([Constraint::Min(0), Constraint::Length(player_rows)]).areas(left);
 
     draw_bar(frame, bar);
     draw_menu(frame, menu, app);
+    if let Some(now) = app.playback.now.as_ref().filter(|_| app.shows_mini_player()) {
+        player::draw_mini(frame, mini, app, now);
+    }
+    frame.render_widget(Paragraph::new(key_hints(app)), hints);
+    if let Some(now) = app.playback.now.as_ref().filter(|_| app.player_open) {
+        player::draw(frame, content, app, now);
+        return;
+    }
     match app.section {
         Section::Discover => match (&app.episode, &app.podcast) {
             (Some(view), _) => episode::draw(frame, content, app, view),
             (None, Some(view)) => podcast::draw(frame, content, app, view),
             (None, None) => discover::draw(frame, content, app),
         },
+        Section::UpNext => upnext::draw(frame, content, app),
         Section::Settings => settings::draw(frame, content, app),
         Section::Help => help::draw(frame, content, app),
     }
-    frame.render_widget(Paragraph::new(key_hints(app)), hints);
 }
 
 /// As btop does it: nothing but the two sizes, each green once it suffices.
@@ -52,12 +65,8 @@ fn draw_too_small(frame: &mut Frame<'_>, area: Rect, app: &App) {
         let colour = if value >= needed { theme::GREEN } else { theme::ACCENT };
         Span::styled(value.to_string(), Style::new().fg(colour).add_modifier(Modifier::BOLD))
     };
-    let enough = |value: u16| {
-        Span::styled(
-            value.to_string(),
-            Style::new().fg(theme::GREEN).add_modifier(Modifier::BOLD),
-        )
-    };
+    let enough =
+        |value: u16| Span::styled(value.to_string(), Style::new().fg(theme::GREEN).add_modifier(Modifier::BOLD));
     let label = |text: &'static str| Span::styled(format!("{:<10}", lang.t(text)), theme::muted());
     let lines = vec![
         Line::styled(lang.t("The window is too small"), theme::bold()),
@@ -77,25 +86,12 @@ fn draw_too_small(frame: &mut Frame<'_>, area: Rect, app: &App) {
             enough(MIN_HEIGHT),
         ]),
         Line::default(),
-        Line::styled(
-            lang.t("Make the window larger — TorroCast keeps running."),
-            theme::faint(),
-        ),
+        Line::styled(lang.t("Make the window larger — TorroCast keeps running."), theme::faint()),
     ];
     let height = lines.len() as u16;
     let top = area.y + area.height.saturating_sub(height) / 2;
-    let middle = Rect {
-        x: area.x,
-        y: top,
-        width: area.width,
-        height: height.min(area.height),
-    };
-    frame.render_widget(
-        Paragraph::new(lines)
-            .alignment(Alignment::Center)
-            .wrap(Wrap { trim: true }),
-        middle,
-    );
+    let middle = Rect { x: area.x, y: top, width: area.width, height: height.min(area.height) };
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center).wrap(Wrap { trim: true }), middle);
 }
 
 fn draw_bar(frame: &mut Frame<'_>, area: Rect) {
@@ -122,40 +118,45 @@ fn draw_menu(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let mut lines = vec![Line::default()];
     for (index, section) in Section::ALL.iter().enumerate() {
         let title = app.lang.t(section.title());
-        lines.push(if *section == app.section {
-            let label = format!(" {}  {title}", index + 1);
-            Line::styled(
-                fit(&label, width),
-                Style::new()
-                    .bg(theme::RED)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )
+        // What waits in Up Next is counted at its menu entry.
+        let waiting = app.playback.up_next.len();
+        let badge = if *section == Section::UpNext && waiting > 0 { format!(" {waiting} ") } else { String::new() };
+        let room = width.saturating_sub(badge.chars().count() + usize::from(!badge.is_empty()));
+        let chosen = *section == app.section && !app.player_open;
+        let on_red = Style::new().bg(theme::RED).fg(Color::White).add_modifier(Modifier::BOLD);
+        let mut spans = if chosen {
+            vec![Span::styled(fit(&format!(" {}  {title}", index + 1), room), on_red)]
         } else {
-            Line::from(vec![
+            vec![
                 Span::styled(format!(" {}  ", index + 1), theme::faint()),
-                Span::raw(title),
-            ])
-        });
+                Span::raw(fit(title, room.saturating_sub(4))),
+            ]
+        };
+        if !badge.is_empty() {
+            spans.push(Span::styled(
+                badge,
+                Style::new().bg(theme::ACCENT).fg(Color::White).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(" ", if chosen { on_red } else { Style::new() }));
+        }
+        lines.push(Line::from(spans));
     }
     frame.render_widget(Paragraph::new(lines), inner);
 
-    if inner.height > 12 {
-        let tagline = Rect {
-            x: inner.x + 1,
-            y: inner.y + inner.height - 2,
-            width: inner.width.saturating_sub(2),
-            height: 1,
-        };
-        frame.render_widget(
-            Paragraph::new(app.lang.t("Podcasts in the terminal.")).style(theme::faint()),
-            tagline,
-        );
+    if inner.height > 12 && !app.shows_mini_player() {
+        let tagline =
+            Rect { x: inner.x + 1, y: inner.y + inner.height - 2, width: inner.width.saturating_sub(2), height: 1 };
+        frame.render_widget(Paragraph::new(app.lang.t("Podcasts in the terminal.")).style(theme::faint()), tagline);
     }
 }
 
 fn key_hints(app: &App) -> Line<'static> {
-    let mut hints: Vec<(&str, &str)> = Vec::new();
+    let mut hints: Vec<(&'static str, &'static str)> = Vec::new();
+    if app.player_open {
+        hints.extend([("␣", "pause"), ("b f", "±30 s"), (", .", "chapter"), ("n", "next episode"), ("x", "stop")]);
+        hints.extend([("- +", "tempo"), ("enter", "jump"), ("esc", "back")]);
+        return hint_line(app, &hints);
+    }
     match app.section {
         Section::Discover => match (&app.episode, &app.podcast) {
             (Some(view), _) => {
@@ -163,51 +164,68 @@ fn key_hints(app: &App) -> Line<'static> {
                     hints.push(("tab", "notes/chapters"));
                 }
                 hints.extend([
-                    ("↑↓", "scroll"),
+                    ("p", "play"),
+                    ("a", "to the end"),
+                    ("A", "to the front"),
                     ("1-9", "open link"),
-                    ("w", "in browser"),
                     ("esc", "back"),
                 ]);
             }
             (None, Some(view)) if view.filtering => hints.extend([("enter", "done"), ("esc", "back")]),
             (None, Some(_)) => {
-                hints.extend([
-                    ("↑↓", "select"),
-                    ("enter", "open"),
-                    ("/", "filter"),
-                    ("o", "order"),
-                    ("w", "website"),
-                    ("esc", "back"),
-                ]);
+                hints.extend([("enter", "open"), ("p", "play"), ("a", "to the end"), ("A", "to the front")]);
+                hints.extend([("/", "filter"), ("esc", "back")]);
             }
             (None, None) if app.search.editing && app.tab == Tab::Search => {
-                hints.extend([("enter", "search now"), ("tab", "tab"), ("esc", "leave input")]);
+                hints.extend([
+                    ("enter", "search now"),
+                    ("tab", "tab"),
+                    ("ctrl+e", "podcasts/episodes"),
+                    ("esc", "leave input"),
+                ]);
+            }
+            (None, None) if app.tab == Tab::Search && app.search.episodes_mode => {
+                hints.extend([("enter", "open"), ("p", "play"), ("a", "to the end"), ("A", "to the front")]);
+                hints.extend([("e", "podcasts"), ("/", "search"), ("tab", "tab")]);
             }
             (None, None) => {
                 hints.extend([("↑↓", "select"), ("enter", "open"), ("/", "search"), ("tab", "tab")]);
+                if app.tab == Tab::Search {
+                    hints.push(("e", "episodes"));
+                }
                 if app.tab == Tab::Charts && app.charts.category.is_some() {
                     hints.push(("esc", "all charts"));
                 }
-                hints.extend([("1-3", "menu"), ("q", "quit")]);
+                hints.extend([("1-4", "menu"), ("q", "quit")]);
             }
         },
-        Section::Settings => hints.extend([
-            ("↑↓", "select"),
-            ("space", "on/off"),
-            ("←→", "change"),
-            ("1-3", "menu"),
-            ("q", "quit"),
-        ]),
-        Section::Help => hints.extend([("esc", "back"), ("1-3", "menu"), ("q", "quit")]),
+        Section::UpNext => {
+            hints.extend([
+                ("↑↓", "select"),
+                ("J K", "move"),
+                ("d", "remove"),
+                ("p", "play"),
+                ("C", "empty"),
+                ("1-4", "menu"),
+            ]);
+        }
+        Section::Settings => {
+            hints.extend([("↑↓", "select"), ("enter", "on/off"), ("←→", "change"), ("1-4", "menu"), ("q", "quit")])
+        }
+        Section::Help => hints.extend([("esc", "back"), ("1-4", "menu"), ("q", "quit")]),
     }
+    // While something plays, the way to its keys closes every hint line.
+    if app.playback.now.is_some() && !app.is_typing() {
+        hints.extend([("␣", "pause"), ("0", "player")]);
+    }
+    hint_line(app, &hints)
+}
 
+fn hint_line(app: &App, hints: &[(&'static str, &'static str)]) -> Line<'static> {
     let mut spans = vec![Span::raw(" ")];
     for (key, label) in hints {
-        spans.push(Span::styled(
-            format!(" {key} "),
-            Style::new().bg(theme::KEY).add_modifier(Modifier::BOLD),
-        ));
-        spans.push(Span::styled(format!(" {}   ", app.lang.t(label)), theme::muted()));
+        spans.push(Span::styled(format!(" {key} "), Style::new().bg(theme::KEY).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(format!(" {}  ", app.lang.t(label)), theme::muted()));
     }
     Line::from(spans)
 }
@@ -247,10 +265,8 @@ pub(crate) fn tab_lines(titles: &[&str], active: usize) -> [Line<'static>; 2] {
 
 /// A sentence in the middle of an otherwise empty panel.
 pub(crate) fn empty(frame: &mut Frame<'_>, area: Rect, sentences: &[&str]) {
-    let lines: Vec<Line<'_>> = sentences
-        .iter()
-        .map(|sentence| Line::styled((*sentence).to_owned(), theme::faint()))
-        .collect();
+    let lines: Vec<Line<'_>> =
+        sentences.iter().map(|sentence| Line::styled((*sentence).to_owned(), theme::faint())).collect();
     let inner = Rect {
         x: area.x + 1,
         y: area.y + 1,

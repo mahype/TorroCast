@@ -48,6 +48,20 @@ pub struct PodcastRef {
     pub sources: Vec<ProviderId>,
 }
 
+/// A single episode as a directory's search finds it — enough to play it
+/// without ever opening its feed.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct EpisodeRef {
+    pub title: String,
+    pub podcast: String,
+    pub feed_url: Option<String>,
+    pub guid: Option<String>,
+    pub audio_url: String,
+    pub duration_ms: Option<u64>,
+    pub published: Option<DateTime<Utc>>,
+    pub description: Option<String>,
+}
+
 /// One entry of a directory's category tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Category {
@@ -92,6 +106,16 @@ pub trait DirectoryProvider: Send + Sync {
     /// `country` is a two-letter code; directories without a notion of country ignore it.
     fn search(&self, fetch: &dyn Fetch, query: &str, country: &str) -> Result<Vec<PodcastRef>, DirectoryError>;
 
+    /// Episodes, not shows. Not every directory can.
+    fn search_episodes(
+        &self,
+        _fetch: &dyn Fetch,
+        _query: &str,
+        _country: &str,
+    ) -> Result<Vec<EpisodeRef>, DirectoryError> {
+        Err(DirectoryError::Unsupported)
+    }
+
     /// The most popular shows, overall or within one category.
     fn charts(
         &self,
@@ -112,9 +136,5 @@ pub(crate) fn json(body: &[u8]) -> Result<serde_json::Value, DirectoryError> {
 }
 
 pub(crate) fn text(value: &serde_json::Value) -> Option<String> {
-    value
-        .as_str()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_owned)
+    value.as_str().map(str::trim).filter(|text| !text.is_empty()).map(str::to_owned)
 }
