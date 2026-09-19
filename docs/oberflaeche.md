@@ -5,8 +5,28 @@ die Designsprache der Torro-Apps (`torro-design/app-design.md`). TorroCast soll 
 Mitglied derselben Familie erkennbar sein: gleicher Rahmen, gleiche Farben, gleiche
 Bedienung – nur der Inhalt wechselt.
 
-Die Mockups sind 104 Spalten breit. Farben lassen sich in Markdown nicht zeigen; wo
-sie eine Rolle spielen, steht es im Text.
+Die Mockups zeigen die Farben aus TorroMails `theme.rs` auf einem dunklen Terminal, 104
+Spalten breit. Sie entstehen aus [`tools/mockups.py`](tools/mockups.py); nach einer
+Änderung dort `python3 docs/tools/mockups.py` ausführen.
+
+## Farben
+
+| Farbe | Wert | Wofür |
+|---|---|---|
+| Torro-Rot | `#D50C0C` | Markenleiste, aktiver Menüeintrag – sonst nirgends |
+| Akzent | `#EE3A33` | Rand des Panels mit Fokus, aktiver Reiter, Eingabemarke, Fortschrittsbalken, Zähler am Menü |
+| Silber | `#C4C3C3` | Produktname in der Wortmarke, Zwischenüberschriften in Shownotes |
+| Gedämpft | `#978A8D` | zweite Zeile eines Eintrags, Datum, Dauer, Beschriftungen |
+| Blass | `#6A5E61` | Menüziffern, Claim, Hinweise in leeren Flächen |
+| Linie | `#5A4C50` | Panel-Ränder ohne Fokus |
+| Auswahl | `#34272B` | Hintergrund der gewählten Zeile, dazu fett |
+| Taste | `#3D3135` | Kacheln in der Tastenzeile |
+| Cyan | `#79BFD3` | alles, was sich öffnen lässt: Links, Linknummern, Kapitel- und Transkript-Zeichen |
+| Grün | `#86CF7D` | in Ordnung: Quelle aktiv, neue Folgen |
+| Amber | `#ECB755` | wartet auf dich: Schlüssel fehlt |
+
+Neu gegenüber TorroMail ist nur die feste Rolle von Cyan für Links. Der Hintergrund
+bleibt der des Terminals.
 
 ## Was von TorroMail übernommen wird
 
@@ -104,34 +124,7 @@ Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
 
 ### Entdecken › Suche
 
-```
-  \_ TORROCAST _/                                                                               v0.1.0
-╭ Menü ──────────────────╮╭ Entdecken ─────────────────────────────────────────────────────────────────╮
-│                        ││  Suche    Charts    Kategorien                                             │
-│▌1  Entdecken           ││  ━━━━━                                                                     │
-│ 2  Einstellungen       ││                                                                            │
-│ 3  Hilfe               ││  ⌕ lage der nation▏                                                        │
-│                        │╰────────────────────────────────────────────────────────────────────────────╯
-│                        │╭ 12 Treffer ────────────────────────────╮╭ Vorschau ────────────────────────╮
-│                        ││▌Lage der Nation                        ││ Lage der Nation                  │
-│                        ││▌Philip Banse & Ulf Buermeyer · Politik ││ Der Politik-Podcast aus Berlin   │
-│                        ││                                        ││ Philip Banse & Ulf Buermeyer     │
-│                        ││ Die Lage – International               ││                                  │
-│                        ││ DER SPIEGEL · Nachrichten              ││ Politik · Nachrichten            │
-│                        ││                                        ││ 497 Folgen · zuletzt heute       │
-│                        ││ Zur Lage der Nation (Archiv)           ││                                  │
-│                        ││ Deutschlandfunk · Politik              ││ Quelle        Apple              │
-│                        ││                                        ││ Website       lagedernation.org  │
-│                        ││ Lagebesprechung                        ││                                  │
-│                        ││ Table.Media · Wirtschaft               ││ Beschreibung und Folgen          │
-│                        ││                                        ││ erscheinen, sobald du den        │
-│                        ││ Nation of Plebs                        ││ Podcast öffnest.                 │
-│                        ││ Studio Bummens · Comedy                ││                                  │
-│ Podcasts im Terminal.  ││                                        ││                                  │
-│                        ││                                        ││                                  │
-╰────────────────────────╯╰────────────────────────────────────────╯╰──────────────────────────────────╯
- [↑↓] Auswahl   [enter] Öffnen   [tab] Reiter   [esc] Eingabe verlassen   [1-3] Menü
-```
+![Entdecken › Suche](mockups/suche.svg)
 
 - Drei Reiter: **Suche**, **Charts** (Apple-Top-Liste des eingestellten Landes),
   **Kategorien** (Apple-Genres; `enter` zeigt die Charts der Kategorie).
@@ -144,31 +137,7 @@ Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
 
 ### Podcast
 
-```
-  \_ TORROCAST _/                                                                               v0.1.0
-╭ Menü ──────────────────╮╭ Entdecken › Lage der Nation ───────────────────────────────────────────────╮
-│                        ││ ▄▄▄▄▄▄▄▄▄▄▄▄   Lage der Nation – der Politik-Podcast aus Berlin            │
-│▌1  Entdecken           ││ █          █   Philip Banse & Ulf Buermeyer                                │
-│ 2  Einstellungen       ││ █  Cover   █                                                               │
-│ 3  Hilfe               ││ █          █   Politik · Nachrichten · Deutsch · 497 Folgen                │
-│                        ││ █          █   lagedernation.org                                           │
-│                        ││ ▀▀▀▀▀▀▀▀▀▀▀▀   ♥ Unterstützen: plus.lagedernation.org                      │
-│                        ││                                                                            │
-│                        ││ Jede Woche besprechen der Journalist Philip Banse und der Jurist Ulf       │
-│                        ││ Buermeyer die politischen Ereignisse der Woche …                 [m] mehr  │
-│                        │╰────────────────────────────────────────────────────────────────────────────╯
-│                        │╭ Folgen · neueste zuerst ───────────────────────────────────────────────────╮
-│                        ││▌LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen     19.09.  1:34:10  ▤ ¶ │
-│                        ││ LdN 411 · Sommerinterview, Bahn, Chatkontrolle        12.09.  1:28:45  ▤ ¶ │
-│                        ││ LdN 410 · Spezial: Wie funktioniert der Bundesrat?    05.09.    58:02  ▤   │
-│                        ││ LdN 409 · Stromsteuer, Richterwahl, Ukraine           29.08.  1:41:33  ▤ ¶ │
-│                        ││ LdN 408 · Sommerpause – Hörerfragen                   22.08.  1:12:09  ▤   │
-│                        ││ LdN 407 · Koalitionsausschuss, Hitzeschutz            15.08.  1:30:51  ▤ ¶ │
-│ Podcasts im Terminal.  ││                                                                            │
-│                        ││ ▤ Kapitel   ¶ Transkript                                                   │
-╰────────────────────────╯╰────────────────────────────────────────────────────────────────────────────╯
- [↑↓] Folge   [enter] Öffnen   [/] Filtern   [o] Reihenfolge   [w] Website   [esc] Zurück
-```
+![Podcast-Ansicht](mockups/podcast.svg)
 
 - Kopf mit Cover, Titel, Autor, Kategorien, Sprache, Website und
   Unterstützungs-Link. Die Beschreibung ist auf zwei Zeilen gekürzt, `m` klappt sie auf.
@@ -180,32 +149,7 @@ Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
 
 ### Folge
 
-```
-  \_ TORROCAST _/                                                                               v0.1.0
-╭ Menü ──────────────────╮╭ Entdecken › Lage der Nation › LdN 412 ─────────────────────────────────────╮
-│                        ││ LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen                          │
-│▌1  Entdecken           ││ 19. September 2026 · 1:34:10 · Staffel –, Folge 412                        │
-│ 2  Einstellungen       │╰────────────────────────────────────────────────────────────────────────────╯
-│ 3  Hilfe               │╭ Shownotes ─────────────────────────────╮╭ Kapitel · 7 ─────────────────────╮
-│                        ││ Begrüßung und Hausmitteilungen. Wir    ││▌00:00:00  Begrüßung              │
-│                        ││ sind im Oktober live in Leipzig –      ││ 00:03:12  Hausmitteilungen       │
-│                        ││ Karten gibt es hier [1].               ││ 00:06:40  Haushalt 2027          │
-│                        ││                                        ││ 00:31:05  Rentenpaket            │
-│                        ││ Haushalt 2027                          ││ 00:58:47  Wahl in Norwegen    ↗  │
-│                        ││ • Kabinettsbeschluss im Überblick [2]  ││ 01:17:20  Chatkontrolle          │
-│                        ││ • Kritik des Bundesrechnungshofs [3]   ││ 01:29:02  Verabschiedung         │
-│                        ││                                        ││                                  │
-│                        ││ Rentenpaket                            ││ Aus dem Feed (Podlove)           │
-│                        ││ Was im Gesetzentwurf steht und was     ││                                  │
-│                        ││ die Kommission noch klären soll [4].   ││                                  │
-│                        ││                                        ││                                  │
-│                        ││ Links                                  ││                                  │
-│                        ││ [1] lagedernation.org/live             ││                                  │
-│ Podcasts im Terminal.  ││ [2] bundesfinanzministerium.de/…       ││                                  │
-│                        ││                                        ││                                  │
-╰────────────────────────╯╰────────────────────────────────────────╯╰──────────────────────────────────╯
- [tab] Shownotes/Kapitel   [↑↓] Blättern   [1-9] Link öffnen   [w] Im Browser   [esc] Zurück
-```
+![Folge mit Shownotes und Kapiteln](mockups/folge.svg)
 
 - Links die Shownotes als lesbarer Text: Absätze, Zwischenüberschriften, Listen. Links
   werden nummeriert und unten aufgelistet; die Ziffer öffnet den Link.
@@ -217,30 +161,7 @@ Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
 
 ### Einstellungen › Quellen
 
-```
-  \_ TORROCAST _/                                                                               v0.1.0
-╭ Menü ──────────────────╮╭ Einstellungen ─────────────────────────────────────────────────────────────╮
-│                        ││  Quellen    Bibliothek    Darstellung    Tasten                            │
-│ 1  Entdecken           ││  ━━━━━━━                                                                   │
-│▌2  Einstellungen       │╰────────────────────────────────────────────────────────────────────────────╯
-│ 3  Hilfe               │╭ Wo TorroCast nach Podcasts sucht ──────────────────────────────────────────╮
-│                        ││                                                                            │
-│                        ││▌●  Apple Podcasts                                              Aktiv       │
-│                        ││▌   Suche, Charts und Kategorien. Braucht keine Einrichtung.                │
-│                        ││                                                                            │
-│                        ││ ○  Podcast Index                               Kein Schlüssel hinterlegt   │
-│                        ││    Offenes Verzeichnis mit Trending und Kapitel-Hinweisen.                 │
-│                        ││    Du brauchst einen eigenen, kostenlosen Schlüssel.                       │
-│                        ││                                                                            │
-│                        ││ ○  fyyd                                                 Ausgeschaltet      │
-│                        ││    Deutschsprachiges Verzeichnis. Braucht keine Einrichtung.               │
-│                        ││                                                                            │
-│                        ││ Land für Suche und Charts      Deutschland                                 │
-│ Podcasts im Terminal.  ││                                                                            │
-│                        ││                                                                            │
-╰────────────────────────╯╰────────────────────────────────────────────────────────────────────────────╯
- [↑↓] Quelle   [leertaste] An/Aus   [enter] Einrichten   [tab] Reiter   [1-3] Menü
-```
+![Einstellungen › Quellen](mockups/quellen.svg)
 
 - Apple ist immer aktiv und lässt sich nicht abschalten, solange keine andere Quelle
   aktiv ist.
@@ -254,27 +175,7 @@ Kapitel, `-` / `+` Tempo, `a` in die Warteschlange, `s` abonnieren.
 
 ## Rahmen ab v0.2
 
-```
-  \_ TORROCAST _/                                                                               v0.1.0
-╭ Menü ──────────────────╮╭ Abos · 23 ─────────────────────────────────────────────────────────────────╮
-│                        ││▌Lage der Nation                                  2 neu   zuletzt heute     │
-│ 1  Entdecken           ││ Logbuch:Netzpolitik                              1 neu   zuletzt gestern   │
-│▌2  Abos                ││ Methodisch inkorrekt                                     zuletzt 14.09.    │
-│ 3  Neue Folgen         ││ Chaosradio                                               zuletzt 28.08.    │
-│ 4  Warteschlange       ││ Freak Show                                       3 neu   zuletzt 11.09.    │
-│ 5  Downloads           ││                                                                            │
-│ 6  Einstellungen       ││                                                                            │
-│ 7  Hilfe               ││                                                                            │
-│                        ││                                                                            │
-│                        ││                                                                            │
-│ Podcasts im Terminal.  ││                                                                            │
-│                        ││                                                                            │
-╰────────────────────────╯╰────────────────────────────────────────────────────────────────────────────╯
-────────────────────────────────────────────────────────────────────────────────────────────────────────
- ▶  LdN 412 · Haushalt, Rentenpaket, Wahl in Norwegen — Lage der Nation           1,3×   ⏾ 30 min
-    00:41:20 ━━━━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━●────────────────────────────── 1:34:10   Rentenpaket
- [leertaste] Pause   [b f] ±30 s   [< >] Kapitel   [- +] Tempo   [a] In Warteschlange   [1-7] Menü
-```
+![Rahmen ab v0.2 mit Wiedergabeleiste](mockups/rahmen.svg)
 
 - Das Menü wächst auf sieben Einträge, wie bei TorroMail. **Neue Folgen** und
   **Warteschlange** tragen einen Zähler am Eintrag, sobald etwas darin liegt.
