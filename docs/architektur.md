@@ -173,7 +173,7 @@ HE-AAC fehlt weiterhin; das gäbe es nur über die patentbehaftete FDK-Bibliothe
 | 1 | Podcast-Index-Key | **Entschieden:** kein Key im Projekt, der Nutzer trägt seinen eigenen ein. Umgesetzt. |
 | 2 | Wiedergabe: eigene Pipeline oder mpv? | **Umgesetzt:** eigene Pipeline, siehe oben. |
 | 3 | Widersprüchliche Positionen zweier Geräte | Umgesetzt: die jüngste gewinnt. Das Angebot „auf dem anderen Gerät warst du weiter“ fehlt noch. |
-| 4 | OPML-Export im Bibliotheks-Ordner | Offen – OPML-Import und -Export fehlen noch ganz. |
+| 4 | OPML-Export im Bibliotheks-Ordner | OPML-Import und -Export sind gebaut (von Hand, `I`/`E` bei den Abos). Ein automatischer Export in den Ordner fehlt. |
 | 5 | Private Feeds mit Token in der URL | Offen: Sie landen derzeit im Klartext im Ordner. |
 | 6 | macOS-Pfade | Umgesetzt: `~/Library/Application Support/TorroCast`. |
 | 7 | Verschlüsselung des Bibliotheks-Ordners | Nicht umgesetzt, wie empfohlen. |

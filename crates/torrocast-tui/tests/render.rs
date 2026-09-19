@@ -525,6 +525,19 @@ fn subscriptions_open_their_podcast_and_escape_leads_back() {
     press(&mut app, KeyCode::Char('2'));
     assert!(screen(&app, 104, 28).contains("Noch keine Abos."));
 
+    // Subscriptions are brought along from another client, and taken elsewhere.
+    press(&mut app, KeyCode::Char('I'));
+    assert!(app.is_typing());
+    type_text(&mut app, "Downloads/pocketcasts.opml");
+    assert!(screen(&app, 104, 28).contains("~/Downloads/pocketcasts.opml▏"));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.commands.pop(), Some(Command::ImportOpml { path: "~/Downloads/pocketcasts.opml".into() }));
+    app.on_event(Event::Opml(torrocast_core::OpmlOutcome::Imported { new: 12, known: 3 }));
+    assert!(screen(&app, 104, 28).contains("12 neue Abos übernommen, 3 waren schon da."));
+    press(&mut app, KeyCode::Char('E'));
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.commands.pop(), Some(Command::ExportOpml { path: "~/torrocast-abos.opml".into() }));
+
     app.on_event(Event::Subscriptions(vec![Subscription {
         podcast: "p".into(),
         feed_url: "https://beispiel.example/feed.xml".into(),

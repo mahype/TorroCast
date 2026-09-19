@@ -56,6 +56,7 @@ Opus episodes need libopus: `cargo run --release --features opus` links the syst
 - **Downloads:** `D` keeps an episode on this machine; it is then played from disk. The
   folder is its own index — audio plus a small JSON description per episode.
 - **Subscriptions:** `s` on a podcast subscribes; they are listed under their own menu entry.
+  `I` brings them along from another client as OPML, `E` writes them out.
 - **New episodes:** what the subscriptions published in the last two weeks and is still
   unheard, newest first, across all feeds — fetched at the start, every half hour and with
   `r`; playable and queueable from the list.

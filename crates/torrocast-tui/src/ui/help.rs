@@ -31,6 +31,7 @@ const LEFT: &[Group] = &[
         "In lists",
         &[
             ("s", "subscribe to the podcast, or end the subscription"),
+            ("I  E", "bring subscriptions along from another client, or take them elsewhere (OPML)"),
             ("o", "reverse the order"),
             ("w", "open the website in the browser"),
             ("m", "unfold the description"),

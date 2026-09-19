@@ -3,7 +3,7 @@
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::{empty, panel};
@@ -20,11 +20,41 @@ pub fn draw(frame: &mut Frame<'_>, area: Rect, app: &App) {
         format!("{} · {}", lang.t("Subscriptions"), subscriptions.len())
     };
     let block = panel(&title, true);
-    let inner = block.inner(area);
+    let mut inner = block.inner(area);
     frame.render_widget(block, area);
+    if let Some((import, path)) = &app.opml_path {
+        let question =
+            if *import { "OPML file to import subscriptions from" } else { "OPML file to write the subscriptions to" };
+        let lines = vec![
+            Line::default(),
+            Line::styled(format!(" {}", lang.t(question)), theme::heading()),
+            Line::from(vec![
+                Span::styled(format!(" {path}"), theme::selected()),
+                Span::styled("▏", Style::new().fg(theme::ACCENT)),
+            ]),
+            Line::default(),
+            Line::styled(
+                format!(" {}", lang.t("~ is your home folder. Every podcast client can write and read such a file.")),
+                theme::muted(),
+            ),
+        ];
+        frame.render_widget(Paragraph::new(lines), inner);
+        return;
+    }
+    // What an import or export came to is said in the last row.
+    if let Some(notice) = &app.notice {
+        let row = Rect {
+            x: inner.x + 1,
+            y: inner.y + inner.height.saturating_sub(1),
+            width: inner.width.saturating_sub(2),
+            height: 1,
+        };
+        frame.render_widget(Paragraph::new(notice.clone()).style(Style::new().fg(theme::SILVER)), row);
+        inner.height = inner.height.saturating_sub(2);
+    }
     if subscriptions.is_empty() {
         let sentences = [
-            lang.t("No subscriptions yet. Open a podcast and press s."),
+            lang.t("No subscriptions yet. Open a podcast and press s — or press I to bring them along from another client."),
             "",
             lang.t("They are kept in the library folder and appear on every device that shares it."),
         ];

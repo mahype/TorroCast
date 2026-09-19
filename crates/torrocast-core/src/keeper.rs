@@ -447,6 +447,56 @@ mod tests {
     }
 
     #[test]
+    fn subscriptions_come_in_and_go_out_as_opml() {
+        use std::sync::Arc;
+
+        use torrocast_net::{Fetch, FetchError};
+
+        use crate::{Command, Core, Event, OpmlOutcome, OutputKind, Settings};
+
+        struct Offline;
+        impl Fetch for Offline {
+            fn get(&self, _url: &str) -> Result<Vec<u8>, FetchError> {
+                Err(FetchError::Status(503))
+            }
+            fn get_range(&self, _url: &str, _start: u64, _end: u64) -> Result<Vec<u8>, FetchError> {
+                Err(FetchError::RangeIgnored)
+            }
+        }
+
+        let directory = scratch("opml");
+        std::fs::create_dir_all(&directory).expect("writable");
+        let (incoming, outgoing) = (directory.join("in.opml"), directory.join("out.opml"));
+        let file = r#"<opml version="2.0"><body><outline text="Eins" xmlUrl="https://eins.example/feed"/>
+            <outline text="Zwei" xmlUrl="https://zwei.example/feed"/></body></opml>"#;
+        std::fs::write(&incoming, file).expect("writable");
+
+        let keeper = Keeper::open(&directory.join("library"), "laptop", "Laptop").expect("opens");
+        let (mut core, events) = Core::new(Arc::new(Offline), Settings::default(), OutputKind::Null, Some(keeper));
+        let outcome = |events: &std::sync::mpsc::Receiver<Event>| {
+            events.try_iter().find_map(|event| if let Event::Opml(outcome) = event { Some(outcome) } else { None })
+        };
+        core.send(Command::ImportOpml { path: incoming.to_string_lossy().into_owned() });
+        assert_eq!(outcome(&events), Some(OpmlOutcome::Imported { new: 2, known: 0 }));
+        core.send(Command::ImportOpml { path: incoming.to_string_lossy().into_owned() });
+        assert_eq!(
+            outcome(&events),
+            Some(OpmlOutcome::Imported { new: 0, known: 2 }),
+            "importing twice subscribes once"
+        );
+
+        core.send(Command::ExportOpml { path: outgoing.to_string_lossy().into_owned() });
+        assert!(matches!(outcome(&events), Some(OpmlOutcome::Exported { count: 2, .. })));
+        let written =
+            torrocast_feed::opml::parse(&std::fs::read_to_string(&outgoing).expect("written")).expect("readable");
+        assert_eq!(written.iter().map(|outline| outline.title.as_str()).collect::<Vec<_>>(), vec!["Eins", "Zwei"]);
+
+        core.send(Command::ImportOpml { path: directory.join("missing.opml").to_string_lossy().into_owned() });
+        assert_eq!(outcome(&events), Some(OpmlOutcome::Failed));
+        let _ = std::fs::remove_dir_all(directory);
+    }
+
+    #[test]
     fn small_changes_cost_single_lines() {
         let directory = scratch("lines");
         let mut keeper = Keeper::open(&directory, "laptop", "Laptop").expect("opens");

@@ -4,6 +4,7 @@
 pub mod chapters;
 mod entities;
 pub mod notes;
+pub mod opml;
 mod parse;
 
 use std::fmt;

@@ -10,7 +10,7 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, Mo
 use ratatui::layout::{Position, Rect};
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
-    Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode,
+    Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode, OpmlOutcome,
     PlaybackState, Playlist, PlaylistCommand, Podcast, PodcastRef, Problem, ProviderId, QueueItem, Settings,
     Subscription, Transport, merge, merge_chapters, notes,
 };
@@ -296,6 +296,8 @@ pub struct App {
     /// The name of a new playlist while it is typed, and the episode that goes into it first.
     pub playlist_name: Option<(Option<QueueItem>, String)>,
     confirm_delete: bool,
+    /// The path of an OPML file while it is typed: `true` to import from it, `false` to export to it.
+    pub opml_path: Option<(bool, String)>,
     pub downloads: Vec<Download>,
     pub downloads_index: usize,
     pub new_episodes: Vec<NewEpisode>,
@@ -379,6 +381,7 @@ impl App {
             picker: None,
             playlist_name: None,
             confirm_delete: false,
+            opml_path: None,
             downloads: Vec::new(),
             downloads_index: 0,
             new_episodes: Vec::new(),
@@ -438,7 +441,7 @@ impl App {
     #[must_use]
     pub fn is_typing(&self) -> bool {
         match self.section {
-            _ if self.playlist_name.is_some() => true,
+            _ if self.playlist_name.is_some() || self.opml_path.is_some() => true,
             _ if self.player_open => false,
             Section::Settings => self.settings_input.is_some(),
             Section::Discover if self.episode.is_some() => false,
@@ -549,6 +552,25 @@ impl App {
                 if let Some(bytes) = bytes {
                     self.covers.arrived(&url, &bytes);
                 }
+            }
+            Event::Opml(outcome) => {
+                self.notice = Some(match (self.lang, outcome) {
+                    (Lang::De, OpmlOutcome::Imported { new, known }) => {
+                        format!("{new} neue Abos übernommen, {known} waren schon da.")
+                    }
+                    (Lang::En, OpmlOutcome::Imported { new, known }) => {
+                        format!("{new} new subscriptions taken over, {known} were there already.")
+                    }
+                    (Lang::De, OpmlOutcome::Exported { count, path }) => {
+                        format!("{count} Abos nach {path} geschrieben.")
+                    }
+                    (Lang::En, OpmlOutcome::Exported { count, path }) => {
+                        format!("{count} subscriptions written to {path}.")
+                    }
+                    (lang, OpmlOutcome::Failed) => {
+                        lang.t("The file could not be read or written. Check the path.").to_owned()
+                    }
+                });
             }
             Event::Playlists(playlists) => {
                 self.playlists_index = self.playlists_index.min(playlists.len().saturating_sub(1));
@@ -930,6 +952,9 @@ impl App {
 
     fn on_subscriptions_key(&mut self, code: KeyCode) {
         match code {
+            // Bring subscriptions along from another client, or take them elsewhere.
+            KeyCode::Char('I') => self.opml_path = Some((true, "~/".to_owned())),
+            KeyCode::Char('E') => self.opml_path = Some((false, "~/torrocast-abos.opml".to_owned())),
             KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
                 if let Some(subscription) = self.subscriptions.get(self.subscriptions_index) {
                     let reference = PodcastRef {
@@ -1122,7 +1147,9 @@ impl App {
 
     /// Applies `change` to whichever text field has the keyboard.
     fn edit(&mut self, change: impl FnOnce(&mut String)) {
-        if let Some((_, name)) = &mut self.playlist_name {
+        if let Some((_, path)) = &mut self.opml_path {
+            change(path);
+        } else if let Some((_, name)) = &mut self.playlist_name {
             change(name);
         } else if let Some((_, text)) = &mut self.settings_input {
             change(text);
@@ -1136,6 +1163,26 @@ impl App {
     }
 
     fn on_typing_key(&mut self, code: KeyCode) {
+        if self.opml_path.is_some() {
+            match code {
+                KeyCode::Char(character) => self.edit(|text| text.push(character)),
+                KeyCode::Backspace => self.edit(|text| {
+                    text.pop();
+                }),
+                KeyCode::Esc => self.opml_path = None,
+                KeyCode::Enter => {
+                    if let Some((import, path)) = self.opml_path.take().filter(|(_, path)| !path.trim().is_empty()) {
+                        self.commands.push(if import {
+                            Command::ImportOpml { path }
+                        } else {
+                            Command::ExportOpml { path }
+                        });
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         if self.playlist_name.is_some() {
             match code {
                 KeyCode::Char(character) => self.edit(|text| text.push(character)),

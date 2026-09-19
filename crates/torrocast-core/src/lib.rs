@@ -23,7 +23,7 @@ use torrocast_directory::apple::Apple;
 use torrocast_directory::fyyd::Fyyd;
 use torrocast_directory::podcast_index::PodcastIndex;
 use torrocast_directory::{DirectoryError, DirectoryProvider};
-use torrocast_feed::chapters;
+use torrocast_feed::{chapters, opml};
 use torrocast_net::{Fetch, FetchError};
 
 pub use downloads::{Download, DownloadState};
@@ -112,6 +112,14 @@ pub enum Command {
         url: String,
     },
     Playlist(PlaylistCommand),
+    /// Subscribes to every feed of an OPML file. `~` is the home folder.
+    ImportOpml {
+        path: String,
+    },
+    /// Writes all subscriptions to an OPML file.
+    ExportOpml {
+        path: String,
+    },
     /// Keeps an episode on this machine, to be heard without a network.
     Download(QueueItem),
     /// Deletes a downloaded episode, by its library id.
@@ -230,6 +238,7 @@ pub enum Event {
         url: String,
         bytes: Option<Arc<Vec<u8>>>,
     },
+    Opml(OpmlOutcome),
     /// The user's playlists, by name — at the start and whenever one changes, here or on another device.
     Playlists(Vec<Playlist>),
     /// Every download, the newest last — whenever one starts, moves on, ends or is deleted.
@@ -238,6 +247,22 @@ pub enum Event {
     PodcastIndexVerified(Result<(), Problem>),
     /// All subscriptions, alphabetically — at the start and whenever they change, here or on another device.
     Subscriptions(Vec<Subscription>),
+}
+
+/// What came of an OPML import or export.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OpmlOutcome {
+    /// `new` feeds were subscribed to; `known` were subscriptions already.
+    Imported {
+        new: usize,
+        known: usize,
+    },
+    Exported {
+        count: usize,
+        path: String,
+    },
+    /// The file could not be read, written, or understood.
+    Failed,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -404,6 +429,26 @@ impl Core {
             Command::Transport(transport) => self.transport(transport),
             Command::RefreshSubscriptions => self.refresh(),
             Command::Playlist(command) => self.playlist(command),
+            Command::ImportOpml { path } => {
+                let outcome = self.import_opml(&home_expanded(&path));
+                let _ = self.events.send(Event::Opml(outcome));
+            }
+            Command::ExportOpml { path } => {
+                let path = home_expanded(&path);
+                let outlines: Vec<opml::Outline> = self
+                    .keeper
+                    .iter()
+                    .flat_map(Keeper::subscriptions)
+                    .map(|subscription| opml::Outline { title: subscription.title, feed_url: subscription.feed_url })
+                    .collect();
+                let written = std::fs::write(&path, opml::write("TorroCast", &outlines));
+                let outcome = if written.is_ok() {
+                    OpmlOutcome::Exported { count: outlines.len(), path }
+                } else {
+                    OpmlOutcome::Failed
+                };
+                let _ = self.events.send(Event::Opml(outcome));
+            }
             Command::Cover { url } => self.spawn(move |shared| {
                 let bytes = cover(shared, &url).map(Arc::new);
                 Event::Cover { url, bytes }
@@ -495,6 +540,27 @@ impl Core {
         self.carry_out(actions);
         self.keep();
         self.publish();
+    }
+
+    fn import_opml(&mut self, path: &str) -> OpmlOutcome {
+        let Some(keeper) = &mut self.keeper else { return OpmlOutcome::Failed };
+        let Some(outlines) = std::fs::read(path).ok().and_then(|bytes| opml::parse(&decode_body(&bytes)).ok()) else {
+            return OpmlOutcome::Failed;
+        };
+        let (mut new, mut known) = (0, 0);
+        for outline in outlines {
+            // The feed's own guid is not known yet; the address names the podcast until the feed says otherwise.
+            let podcast = keeper::podcast_id(None, &outline.feed_url);
+            if keeper.is_subscribed(&podcast) {
+                known += 1;
+            } else {
+                keeper.set_subscribed(podcast, outline.feed_url, outline.title, true);
+                new += 1;
+            }
+        }
+        let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
+        self.refresh();
+        OpmlOutcome::Imported { new, known }
     }
 
     fn playlist(&mut self, command: PlaylistCommand) {
@@ -810,6 +876,16 @@ fn cover(shared: &Shared, url: &str) -> Option<Vec<u8>> {
         let _ = std::fs::write(file, &bytes);
     }
     Some(bytes)
+}
+
+/// `~/podcasts.opml` as the file system wants it.
+fn home_expanded(path: &str) -> String {
+    let path = path.trim();
+    let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default();
+    match path.strip_prefix('~') {
+        Some(rest) if !home.is_empty() => format!("{home}{rest}"),
+        _ => path.to_owned(),
+    }
 }
 
 /// Chapters from outside the feed: the JSON file first, the head of the MP3 otherwise.

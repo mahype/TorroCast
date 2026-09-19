@@ -220,7 +220,16 @@ fn key_hints(app: &App) -> Line<'static> {
                 hints.extend([("1-8", "menu"), ("q", "quit")]);
             }
         },
-        Section::Subscriptions => hints.extend([("↑↓", "select"), ("enter", "open"), ("1-8", "menu"), ("q", "quit")]),
+        Section::Subscriptions if app.opml_path.is_some() => hints.extend([("enter", "done"), ("esc", "back")]),
+        Section::Subscriptions => {
+            hints.extend([
+                ("↑↓", "select"),
+                ("enter", "open"),
+                ("I", "import OPML"),
+                ("E", "export OPML"),
+                ("1-8", "menu"),
+            ]);
+        }
         Section::NewEpisodes => {
             hints.extend([
                 ("enter", "open"),

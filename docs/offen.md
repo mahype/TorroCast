@@ -24,7 +24,7 @@ ist (macOS, Windows), oder einen echten Schlüssel zum Testen.
 - [ ] HE-AAC (nur über die patentbehaftete FDK-Bibliothek zu haben; bewusst zurückgestellt)
 - [x] Maus: Ein Klick wählt eine Zeile, ein zweiter öffnet sie; Reiter sind anklickbar
 - [x] Verschachtelte Listen in Shownotes behalten ihre Einrückung
-- [ ] OPML-Import und -Export (stand für v0.2 in der Funktionssammlung, ist noch nicht gebaut)
+- [x] OPML-Import und -Export (`I` und `E` bei den Abos)
 - [ ] Episodenzustände „archiviert“ und „Favorit“; Statistiken; Transkripte
 - [ ] Private Feeds mit Token in der URL: beim Abonnieren warnen, „nur auf diesem Gerät“ anbieten
 - [ ] FFI-Schicht (`torrocast-ffi`, UniFFI) und native Oberflächen

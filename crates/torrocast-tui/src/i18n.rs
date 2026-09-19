@@ -150,7 +150,26 @@ const GERMAN: &[(&str, &str)] = &[
     ("Subscribed", "Abonniert"),
     ("subscribe", "Abonnieren"),
     ("subscribe to the podcast, or end the subscription", "Podcast abonnieren oder Abo beenden"),
-    ("No subscriptions yet. Open a podcast and press s.", "Noch keine Abos. Öffne einen Podcast und drück s."),
+    (
+        "No subscriptions yet. Open a podcast and press s — or press I to bring them along from another client.",
+        "Noch keine Abos. Öffne einen Podcast und drück s – oder hol sie mit I aus einem anderen Player herüber.",
+    ),
+    ("import OPML", "OPML einlesen"),
+    ("export OPML", "OPML schreiben"),
+    ("OPML file to import subscriptions from", "OPML-Datei, aus der die Abos übernommen werden"),
+    ("OPML file to write the subscriptions to", "OPML-Datei, in die die Abos geschrieben werden"),
+    (
+        "~ is your home folder. Every podcast client can write and read such a file.",
+        "~ ist dein Home-Verzeichnis. Jeder Podcast-Player kann eine solche Datei schreiben und lesen.",
+    ),
+    (
+        "The file could not be read or written. Check the path.",
+        "Die Datei ließ sich nicht lesen oder schreiben. Prüf den Pfad.",
+    ),
+    (
+        "bring subscriptions along from another client, or take them elsewhere (OPML)",
+        "Abos aus einem anderen Player holen oder mitnehmen (OPML)",
+    ),
     (
         "They are kept in the library folder and appear on every device that shares it.",
         "Sie liegen im Bibliotheks-Ordner und erscheinen auf jedem Gerät, das ihn teilt.",
