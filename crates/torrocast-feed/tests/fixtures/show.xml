@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/DTDs/Podcast-1.0.dtd"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:psc="http://podlove.org/simple-chapters"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0"
+     xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Beispielsendung</title>
+    <link>https://beispiel.example</link>
+    <atom:link href="https://beispiel.example/feed.xml" rel="self" type="application/rss+xml"/>
+    <description><![CDATA[<p>Jede Woche <b>Politik</b> aus Berlin.</p>]]></description>
+    <language>de-DE</language>
+    <itunes:author>Anna Beispiel &amp; Ben Muster</itunes:author>
+    <itunes:image href="https://beispiel.example/cover.jpg"/>
+    <itunes:explicit>no</itunes:explicit>
+    <itunes:category text="News"><itunes:category text="Politics"/></itunes:category>
+    <itunes:category text="Society &amp; Culture"/>
+    <podcast:guid>917393e3-1b1e-5cef-ace4-edaa54e1f810</podcast:guid>
+    <podcast:funding url="https://beispiel.example/plus">Unterstützen</podcast:funding>
+    <podcast:person role="host" href="https://anna.example">Anna Beispiel</podcast:person>
+    <item>
+      <title>BS 012 · Haushalt &amp;amp; Rente</title>
+      <guid isPermaLink="false">bs-012</guid>
+      <pubDate>Sat, 19 Sep 2026 12:33:00 +0200</pubDate>
+      <link>https://beispiel.example/012</link>
+      <itunes:duration>1:34:10</itunes:duration>
+      <itunes:season>2</itunes:season>
+      <itunes:episode>12</itunes:episode>
+      <enclosure url="https://cdn.beispiel.example/bs012.mp3?src=feed" length="67890123" type="audio/mpeg"/>
+      <description>Kurzfassung der Folge.</description>
+      <content:encoded><![CDATA[<p>Begrüßung. Karten gibt es <a href="https://beispiel.example/live">hier</a>.</p><h3>Haushalt</h3><ul><li>Der Beschluss</li></ul>]]></content:encoded>
+      <psc:chapters version="1.2">
+        <psc:chapter start="00:00:00.000" title="Begrüßung"/>
+        <psc:chapter start="00:06:40" title="Haushalt" href="https://beispiel.example/haushalt"/>
+        <psc:chapter start="kaputt" title="zählt nicht"/>
+      </psc:chapters>
+      <podcast:chapters url="https://beispiel.example/012/chapters.json" type="application/json+chapters"/>
+      <podcast:transcript url="https://beispiel.example/012.vtt" type="text/vtt"/>
+    </item>
+    <item>
+      <title>BS 011 · Sommerpause&nbsp;&ndash; H&ouml;rerfragen</title>
+      <guid>https://beispiel.example/011</guid>
+      <pubDate>2026-09-12T10:00:00Z</pubDate>
+      <itunes:duration>3480</itunes:duration>
+      <enclosure url="https://cdn.beispiel.example/bs011.m4a" length="0" type="audio/x-m4a"/>
+      <description>Fragen &amp; Antworten, R&D inklusive.</description>
+      <itunes:author>Doppelt &amp;amp; dreifach</itunes:author>
+    </item>
+  </channel>
+</rss>

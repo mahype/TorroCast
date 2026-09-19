@@ -1,0 +1,18 @@
+[package]
+name = "torrocast-feed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Reads podcast feeds: RSS with the iTunes, Podlove and Podcasting 2.0 extensions, chapters and show notes."
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+roxmltree = "0.20"
+id3 = "1"

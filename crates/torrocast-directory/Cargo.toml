@@ -1,0 +1,17 @@
+[package]
+name = "torrocast-directory"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Where podcasts are found: Apple by default, further directories behind the same trait."
+
+[lints]
+workspace = true
+
+[dependencies]
+torrocast-net = { path = "../torrocast-net" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true

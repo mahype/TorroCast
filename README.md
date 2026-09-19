@@ -2,8 +2,47 @@
 
 A podcast player with a portable core and a terminal UI.
 
-**Status: planning.** This repository currently holds research and design documents.
-There is no code yet.
+**Status: v0.1 — find and read.** Search podcasts, browse charts and categories, open
+a podcast, read show notes and chapters. No playback yet; that is v0.2.
+
+## Run it
+
+```
+cargo run --release
+```
+
+Needs Rust 1.88 or newer and a terminal of at least 80 × 24. Linux, macOS and Windows.
+Type to search, `enter` opens, `esc` goes back, `?` lists every key. The interface
+speaks German or English, following `LANG`. An address typed into the search field is
+opened as a feed.
+
+## What v0.1 does
+
+- **Search** Apple's podcast directory, optionally fyyd as well (Settings). Results of
+  several directories arrive as they come and are folded into one list.
+- **Charts** by country and **categories** with their own charts.
+- **Podcast:** description, categories, website, support link, the episode list with
+  date, length and marks for chapters and transcripts; filter with `/`, reverse with `o`.
+- **Episode:** show notes laid out for the terminal with numbered links (`1`–`9` open
+  them), and chapters from all three places they can live: the feed (Podlove), the
+  `podcast:chapters` file, and the ID3 tag at the head of the MP3 — read with two small
+  range requests, never by downloading the episode.
+- Settings are kept in `config.toml` in the platform's config directory.
+
+Not in v0.1: playback, subscriptions, the synced library folder, cover art, Podcast
+Index (it will need your own free key).
+
+## Layout
+
+| Crate | What it is |
+|---|---|
+| `torrocast-net` | HTTP behind a trait that tests replace |
+| `torrocast-directory` | Directories: Apple, fyyd, and merging their answers |
+| `torrocast-feed` | Feed parsing, chapters, show notes — pure, no network |
+| `torrocast-core` | Commands in, events out; settings. No user interface |
+| `torrocast-tui` | The terminal interface (binary `torrocast`) |
+
+The user interface contains no logic another front end would need too.
 
 ## Idea
 
@@ -33,6 +72,6 @@ The planning documents are written in German.
 
 ## Roadmap
 
-- **v0.1** – search, podcast detail, episode list, show notes, chapters (no playback)
+- **v0.1** – search, podcast detail, episode list, show notes, chapters (no playback) — done
 - **v0.2** – subscriptions, library folder sync, playback, queue, downloads
 - **later** – transcripts, per-podcast settings, gpodder-compatible server sync, native GUIs

@@ -1,0 +1,18 @@
+[package]
+name = "torrocast-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "The portable heart of TorroCast: commands in, events out. No user interface, no platform code."
+
+[lints]
+workspace = true
+
+[dependencies]
+torrocast-net = { path = "../torrocast-net" }
+torrocast-directory = { path = "../torrocast-directory" }
+torrocast-feed = { path = "../torrocast-feed" }
+serde.workspace = true
+toml = "0.8"

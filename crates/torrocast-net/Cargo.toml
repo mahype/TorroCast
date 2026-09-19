@@ -1,0 +1,14 @@
+[package]
+name = "torrocast-net"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "The one place TorroCast talks HTTP: a polite client behind a trait tests can replace."
+
+[lints]
+workspace = true
+
+[dependencies]
+ureq = "2"
