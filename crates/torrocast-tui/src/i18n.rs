@@ -148,6 +148,8 @@ const GERMAN: &[(&str, &str)] = &[
     // subscriptions and library
     ("Subscriptions", "Abos"),
     ("Subscribed", "Abonniert"),
+    ("TorroCast is open in another window already.", "TorroCast ist schon in einem anderen Fenster offen."),
+    ("TorroCast is running already.", "TorroCast läuft schon."),
     ("subscribe", "Abonnieren"),
     ("subscribe to the podcast, or end the subscription", "Podcast abonnieren oder Abo beenden"),
     (

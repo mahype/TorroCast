@@ -57,6 +57,10 @@ Opus episodes need libopus: `cargo run --release --features opus` links the syst
 - **Playlists:** `L` on any episode puts it into a playlist of yours (or a new one); a whole
   playlist goes into Up Next with `a` or `A`. They live in the library folder, so every device
   that shares it has them.
+- **From outside:** `torrocast daemon` plays without a window, `torrocast status` says what plays
+  as JSON, `torrocast ctl play|pause|next|…` steers it — the makings of a desktop widget. There is
+  one for Omarchy's bar: [omarchy-torrocast](https://github.com/mahype/omarchy-torrocast).
+  See [docs/fernsteuerung.md](docs/fernsteuerung.md).
 - **Media keys (Linux):** TorroCast announces itself over MPRIS, so the keyboard's media keys,
   the panel's sound menu and the lock screen see what plays and can steer it.
 - **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,

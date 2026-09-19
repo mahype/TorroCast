@@ -6,6 +6,7 @@ pub mod downloads;
 pub mod fresh;
 pub mod keeper;
 pub mod playback;
+pub mod remote;
 pub mod settings;
 
 use std::collections::HashMap;

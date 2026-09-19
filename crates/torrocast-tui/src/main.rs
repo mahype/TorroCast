@@ -6,33 +6,48 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use ratatui::crossterm::execute;
 use torrocast_core::keeper::Keeper;
-use torrocast_core::settings::{Platform, cache_dir, config_file, default_download_dir, default_library_dir};
-use torrocast_core::{Core, OutputKind, Settings};
+use torrocast_core::settings::{
+    Platform, cache_dir, config_file, default_download_dir, default_library_dir, socket_file,
+};
+use torrocast_core::{Command, Core, Event as CoreEvent, OutputKind, Settings, Transport};
 use torrocast_net::HttpClient;
 use torrocast_tui::app::App;
 use torrocast_tui::i18n::Lang;
 use torrocast_tui::ui;
+
+mod cli;
 
 /// Short enough that an answer from the core shows up without a key press.
 /// How often the subscribed feeds are fetched again while the program runs.
 const REFRESH_EVERY: Duration = Duration::from_secs(30 * 60);
 const POLL: Duration = Duration::from_millis(50);
 
-fn main() -> std::io::Result<()> {
-    if std::env::args().any(|argument| argument == "--version" || argument == "-V") {
-        println!("torrocast {}", ui::VERSION);
-        return Ok(());
-    }
-    let environment: HashMap<String, String> = std::env::vars().collect();
-    let locale = ["LC_ALL", "LC_MESSAGES", "LANG"]
+/// Everything a TorroCast that plays needs, whether it draws a terminal interface or not.
+struct Started {
+    environment: HashMap<String, String>,
+    lang: Lang,
+    file: Option<std::path::PathBuf>,
+    settings: Settings,
+    library: Result<String, String>,
+    core: Core,
+    events: std::sync::mpsc::Receiver<CoreEvent>,
+}
+
+fn locale_of(environment: &HashMap<String, String>) -> String {
+    ["LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
         .filter_map(|name| environment.get(*name))
         .find(|value| !value.is_empty())
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_default()
+}
+
+fn start(environment: HashMap<String, String>) -> Started {
+    let locale = locale_of(&environment);
     // Without a place for the file the settings last for this run only.
     let file = config_file(Platform::current(), &environment);
-    let settings = file.as_deref().map_or_else(|| Settings::for_locale(&locale), |file| Settings::load(file, &locale));
+    let mut settings =
+        file.as_deref().map_or_else(|| Settings::for_locale(&locale), |file| Settings::load(file, &locale));
 
     // `TORROCAST_OUTPUT=muted` plays without a sound card, in real time — for trying things out in silence.
     let output = match environment.get("TORROCAST_OUTPUT").map(String::as_str) {
@@ -40,7 +55,6 @@ fn main() -> std::io::Result<()> {
         _ => OutputKind::Device,
     };
     // The library: in the folder the user chose, or in the platform's place for data.
-    let mut settings = settings;
     if settings.device_id.is_none() {
         settings.device_id = Some(torrocast_core::keeper::new_device_id());
         if let Some(file) = file.as_deref() {
@@ -64,10 +78,7 @@ fn main() -> std::io::Result<()> {
     };
 
     let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone(), output, keeper.ok());
-    let mut app = App::new(Lang::from_locale(&locale), settings);
-    app.library = library;
-    let downloads = app
-        .settings
+    let downloads = settings
         .download_dir
         .clone()
         .map(std::path::PathBuf::from)
@@ -79,7 +90,54 @@ fn main() -> std::io::Result<()> {
         core.set_download_directory(directory);
     }
     // The first look at what the subscriptions have published.
-    core.send(torrocast_core::Command::RefreshSubscriptions);
+    core.send(Command::RefreshSubscriptions);
+    Started { lang: Lang::from_locale(&locale), environment, file, settings, library, core, events }
+}
+
+fn main() -> std::io::Result<()> {
+    let environment: HashMap<String, String> = std::env::vars().collect();
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let code = match arguments.first().map(String::as_str) {
+        None => return run_tui(environment),
+        Some("--version" | "-V") => {
+            println!("torrocast {}", ui::VERSION);
+            0
+        }
+        Some("daemon") => cli::daemon(environment),
+        Some("status") => cli::status(&environment),
+        Some("ctl") => cli::ctl(&environment, &arguments[1..]),
+        Some("--help" | "-h" | "help") => {
+            print!("{}", cli::HELP);
+            0
+        }
+        Some(other) => {
+            eprintln!("torrocast: unknown argument “{other}”\n\n{}", cli::HELP);
+            2
+        }
+    };
+    std::process::exit(code)
+}
+
+fn run_tui(environment: HashMap<String, String>) -> std::io::Result<()> {
+    // One TorroCast plays at a time. One without a window makes room and hands over what it played;
+    // another terminal interface is left alone.
+    let socket = socket_file(Platform::current(), &environment);
+    let lang = Lang::from_locale(&locale_of(&environment));
+    let (remote, resume) = match socket.as_deref().map(|socket| cli::take_over(socket, lang)) {
+        Some(Ok(taken)) => taken,
+        Some(Err(sentence)) => {
+            eprintln!("{sentence}");
+            std::process::exit(1)
+        }
+        None => (None, false),
+    };
+    let mut remote = remote;
+    let Started { environment, lang, file, settings, library, mut core, events } = start(environment);
+    if resume {
+        core.send(Command::Transport(Transport::PlayQueued(0)));
+    }
+    let mut app = App::new(lang, settings);
+    app.library = library;
 
     let mut terminal = ratatui::init();
     // What pictures the terminal can show is read from its environment and its size — see `covers::protocol_of`.
@@ -120,11 +178,18 @@ fn main() -> std::io::Result<()> {
         app.tick(Instant::now());
         if refreshed.elapsed() >= REFRESH_EVERY {
             refreshed = Instant::now();
-            core.send(torrocast_core::Command::RefreshSubscriptions);
+            core.send(Command::RefreshSubscriptions);
         }
         core.pump();
         while let Ok(event) = events.try_recv() {
+            if let Some(remote) = &mut remote {
+                remote.view.observe(&event);
+            }
             app.on_event(event);
+        }
+        // A widget or a script may ask what plays, steer it, or ask this window to close.
+        if remote.as_mut().is_some_and(|remote| remote.serve(&mut core)) {
+            app.should_quit = true;
         }
 
         if let Some(wanted) = app.library_request.take() {
@@ -167,6 +232,7 @@ fn main() -> std::io::Result<()> {
         }
     };
     core.shutdown();
+    drop(remote);
     let _ = execute!(stdout(), DisableMouseCapture);
     ratatui::restore();
     outcome

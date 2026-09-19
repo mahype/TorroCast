@@ -161,6 +161,17 @@ pub fn cache_dir(platform: Platform, environment: &HashMap<String, String>) -> O
     }
 }
 
+/// The socket a running TorroCast answers on — one per user. Beside the session's other sockets where the
+/// system has such a place, otherwise with the cache: either way gone or stale after a restart, never synced.
+#[must_use]
+pub fn socket_file(platform: Platform, environment: &HashMap<String, String>) -> Option<PathBuf> {
+    let variable = |name: &str| environment.get(name).filter(|value| !value.is_empty()).map(PathBuf::from);
+    match (platform, variable("XDG_RUNTIME_DIR")) {
+        (Platform::Linux, Some(runtime)) => Some(runtime.join("torrocast.sock")),
+        _ => Some(cache_dir(platform, environment)?.join("torrocast.sock")),
+    }
+}
+
 /// Where downloads go unless the user chose a folder: beside the library, not in it.
 #[must_use]
 pub fn default_download_dir(platform: Platform, environment: &HashMap<String, String>) -> Option<PathBuf> {

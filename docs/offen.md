@@ -14,6 +14,8 @@ ist (macOS, Windows), oder einen echten Schlüssel zum Testen.
 - [ ] Downloads: laufenden Download abbrechen; automatisch laden und aufräumen; Download-Ordner in der Oberfläche wählen (bisher `download_dir` in der `config.toml`)
 - [x] Cover-Bilder im Podcast-Kopf und im großen Player (Kitty, Sixel, iTerm2 nach Terminal, sonst Halbblöcke; abschaltbar; Platten-Cache). In tmux als Halbblöcke geprüft – **Sixel in foot und Kitty-Grafik noch von niemandem angesehen**
 - [x] Medientasten unter Linux (MPRIS): Medientasten, Klangmenü, Sperrbildschirm sehen und steuern die Wiedergabe – gegen den Session-Bus geprüft
+- [x] Fernsteuerung: `torrocast daemon` (ohne Fenster), `status` (JSON), `ctl` – Unix-Socket, siehe `fernsteuerung.md`; Grundlage des Omarchy-Plugins
+- [ ] Fernsteuerung: die TUI als Fenster auf ein dauerhaft laufendes TorroCast (heute endet die Wiedergabe mit der TUI); Windows (Named Pipe); Tempo über die Übergabe Daemon→TUI hinweg behalten
 - [ ] Medientasten unter macOS (braucht einen Run-Loop auf dem Main-Thread) und Windows (braucht ein verstecktes Fenster)
 - [x] Mehrere Playlists: anlegen (`N`), Folgen von überall hineinlegen (`L`), ganz in „Als Nächstes“ legen (`a`/`A`), löschen – im Bibliotheks-Ordner gespeichert und damit geräteübergreifend
 - [ ] Playlists: umbenennen, umsortieren; Playlists nach Regeln (Smart Playlists)

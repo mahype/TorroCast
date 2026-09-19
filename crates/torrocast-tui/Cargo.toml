@@ -17,6 +17,9 @@ ratatui = "0.30"
 unicode-width = "0.2"
 torrocast-net = { path = "../torrocast-net" }
 ratatui-image = { version = "11", default-features = false, features = ["crossterm"] }
+serde_json.workspace = true
+# The player without a window saves its place when the system tells it to end.
+ctrlc = { version = "3", features = ["termination"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 
 [dev-dependencies]
