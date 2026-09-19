@@ -236,8 +236,11 @@ impl Folder {
         }
         let snapshot = self.own_directory().join(format!("snapshot-{:06}.jsonl", self.segment));
         let temporary = snapshot.with_extension("tmp");
-        fs::write(&temporary, &text)?;
-        File::open(&temporary)?.sync_all()?;
+        // Written and forced to disk through one handle: Windows refuses to flush a file opened for reading.
+        let mut file = File::create(&temporary)?;
+        file.write_all(&text)?;
+        file.sync_all()?;
+        drop(file);
         fs::rename(&temporary, &snapshot)?;
 
         self.segment += 1;
