@@ -53,6 +53,14 @@ impl From<StoredItem> for QueueItem {
     }
 }
 
+/// A playlist of the user's own.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Playlist {
+    pub id: String,
+    pub name: String,
+    pub items: Vec<QueueItem>,
+}
+
 pub struct Keeper {
     folder: Folder,
     device: String,
@@ -221,6 +229,54 @@ impl Keeper {
         }
     }
 
+    /// The user's own playlists with what is in them.
+    #[must_use]
+    pub fn playlists(&self) -> Vec<Playlist> {
+        let state = self.folder.state();
+        state
+            .playlists()
+            .into_iter()
+            .map(|(id, name)| {
+                let items = state.playlist(&id).into_iter().map(|(_, _, item)| item.into()).collect();
+                Playlist { id, name, items }
+            })
+            .collect()
+    }
+
+    /// Creates a playlist and says what it is called in the library's files.
+    pub fn create_playlist(&mut self, name: &str) -> String {
+        let playlist = torrocast_library::new_playlist_id();
+        let _ = self
+            .folder
+            .record(Change::PlaylistSet { playlist: playlist.clone(), name: name.trim().to_owned() }, now_ms());
+        playlist
+    }
+
+    /// Deletes a playlist and what is in it.
+    pub fn delete_playlist(&mut self, playlist: &str) {
+        for (episode, _, _) in self.folder.state().playlist(playlist) {
+            let _ = self.folder.record(Change::QueueItemRemoved { playlist: playlist.to_owned(), episode }, now_ms());
+        }
+        let _ = self.folder.record(Change::PlaylistRemoved { playlist: playlist.to_owned() }, now_ms());
+    }
+
+    /// Appends an episode. One that is already in the playlist stays where it is.
+    pub fn add_to_playlist(&mut self, playlist: &str, item: &QueueItem) {
+        let entries = self.folder.state().playlist(playlist);
+        let episode = item.library_id();
+        if entries.iter().any(|(known, _, _)| *known == episode) {
+            return;
+        }
+        let sort = entries.last().map_or(0.0, |(_, sort, _)| sort + 1.0);
+        let change = Change::QueueItemSet { playlist: playlist.to_owned(), episode, sort, item: item.into() };
+        let _ = self.folder.record(change, now_ms());
+    }
+
+    pub fn remove_from_playlist(&mut self, playlist: &str, item: &QueueItem) {
+        let change = Change::QueueItemRemoved { playlist: playlist.to_owned(), episode: item.library_id() };
+        let _ = self.folder.record(change, now_ms());
+    }
+
     /// Looks for what other devices wrote. `true` if there was something.
     pub fn look(&mut self) -> bool {
         if self.looked.elapsed() < LOOK_EVERY {
@@ -359,6 +415,35 @@ mod tests {
         for directory in [old, new] {
             let _ = std::fs::remove_dir_all(directory);
         }
+    }
+
+    #[test]
+    fn playlists_are_made_filled_and_deleted() {
+        let directory = scratch("playlists");
+        let id = {
+            let mut keeper = Keeper::open(&directory, "laptop", "Laptop").expect("opens");
+            let id = keeper.create_playlist("  Zum Einschlafen ");
+            keeper.add_to_playlist(&id, &item("a"));
+            keeper.add_to_playlist(&id, &item("b"));
+            keeper.add_to_playlist(&id, &item("a"));
+            let other = keeper.create_playlist("Andere");
+            keeper.add_to_playlist(&other, &item("c"));
+            keeper.delete_playlist(&other);
+            id
+        };
+        let mut keeper = Keeper::open(&directory, "laptop", "Laptop").expect("reopens");
+        let playlists = keeper.playlists();
+        assert_eq!(playlists.len(), 1, "a deleted playlist stays deleted");
+        assert_eq!(playlists[0].name, "Zum Einschlafen");
+        let titles: Vec<&str> = playlists[0].items.iter().map(|item| item.title.as_str()).collect();
+        assert_eq!(titles, vec!["a", "b"], "in the order added, and nothing twice");
+        keeper.remove_from_playlist(&id, &item("a"));
+        assert_eq!(keeper.playlists()[0].items.len(), 1);
+
+        let mut playback = Playback::default();
+        keeper.restore(&mut playback);
+        assert!(playback.up_next.is_empty(), "a playlist is not Up Next");
+        let _ = std::fs::remove_dir_all(directory);
     }
 
     #[test]

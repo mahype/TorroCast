@@ -11,7 +11,8 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [x] Cover-Bilder im Podcast-Kopf und im großen Player (Kitty, Sixel, iTerm2 nach Terminal, sonst Halbblöcke; abschaltbar; Platten-Cache). In tmux als Halbblöcke geprüft – **Sixel in foot und Kitty-Grafik noch von niemandem angesehen**
 - [x] Medientasten unter Linux (MPRIS): Medientasten, Klangmenü, Sperrbildschirm sehen und steuern die Wiedergabe – gegen den Session-Bus geprüft
 - [ ] Medientasten unter macOS (braucht einen Run-Loop auf dem Main-Thread) und Windows (braucht ein verstecktes Fenster)
-- [ ] Mehrere Playlists
+- [x] Mehrere Playlists: anlegen (`N`), Folgen von überall hineinlegen (`L`), ganz in „Als Nächstes“ legen (`a`/`A`), löschen – im Bibliotheks-Ordner gespeichert und damit geräteübergreifend
+- [ ] Playlists: umbenennen, umsortieren; Playlists nach Regeln (Smart Playlists)
 - [ ] Bibliotheks-Ordner: verdichtete Schnappschüsse, alte Journale entfernen
 - [ ] Opus und HE-AAC
 - [ ] Maus: Klicks in Listen; verschachtelte Listen in Shownotes

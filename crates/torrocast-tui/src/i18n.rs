@@ -104,6 +104,24 @@ const GERMAN: &[(&str, &str)] = &[
     ("Make the window larger — TorroCast keeps running.", "Zieh das Fenster größer – TorroCast läuft weiter."),
     ("Podcast covers", "Cover-Bilder"),
     ("on", "an"),
+    // playlists
+    ("Playlists", "Playlists"),
+    ("new playlist", "Neue Playlist"),
+    ("all to the end", "Alle ans Ende"),
+    ("all to the front", "Alle an den Anfang"),
+    ("put it into one of your playlists", "in eine deiner Playlists legen"),
+    ("Press d again to delete the playlist.", "Drück noch einmal d, um die Playlist zu löschen."),
+    ("Name of the new playlist", "Name der neuen Playlist"),
+    ("Into which playlist?", "In welche Playlist?"),
+    ("A new playlist …", "Eine neue Playlist …"),
+    (
+        "No playlists yet. N makes one; L on any episode puts it into a playlist.",
+        "Noch keine Playlists. N legt eine an; L auf einer Folge legt sie in eine Playlist.",
+    ),
+    (
+        "This playlist is empty. L on any episode puts it here.",
+        "Diese Playlist ist leer. L auf einer Folge legt sie hierher.",
+    ),
     // downloads
     ("Downloads", "Downloads"),
     ("download", "Laden"),

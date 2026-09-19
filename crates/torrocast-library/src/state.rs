@@ -60,6 +60,14 @@ pub enum Change {
         playlist: String,
         episode: String,
     },
+    /// A playlist of the user's own: created, or renamed.
+    PlaylistSet {
+        playlist: String,
+        name: String,
+    },
+    PlaylistRemoved {
+        playlist: String,
+    },
     /// Written by a newer version. Skipped, never rewritten, so nothing is lost.
     #[serde(other)]
     Unknown,
@@ -95,6 +103,7 @@ pub struct State {
     subscriptions: HashMap<String, Register<Option<Subscription>>>,
     progress: HashMap<String, Register<Progress>>,
     queue: HashMap<Entry, Register<Option<(f64, StoredItem)>>>,
+    playlists: HashMap<String, Register<Option<String>>>,
 }
 
 fn write<K: std::hash::Hash + Eq, T>(registers: &mut HashMap<K, Register<T>>, key: K, hlc: &Hlc, value: T) {
@@ -118,6 +127,8 @@ impl State {
                 write(&mut self.queue, (playlist, episode), hlc, Some((sort, item)))
             }
             Change::QueueItemRemoved { playlist, episode } => write(&mut self.queue, (playlist, episode), hlc, None),
+            Change::PlaylistSet { playlist, name } => write(&mut self.playlists, playlist, hlc, Some(name)),
+            Change::PlaylistRemoved { playlist } => write(&mut self.playlists, playlist, hlc, None),
             Change::DeviceRegistered { .. } | Change::Unknown => {}
         }
     }
@@ -139,6 +150,15 @@ impl State {
     #[must_use]
     pub fn progress(&self, episode: &str) -> Option<Progress> {
         self.progress.get(episode).map(|register| register.value)
+    }
+
+    /// The user's own playlists as (id, name), by name. Up Next is not among them.
+    #[must_use]
+    pub fn playlists(&self) -> Vec<(String, String)> {
+        let mut playlists: Vec<(String, String)> =
+            self.playlists.iter().filter_map(|(id, register)| Some((id.clone(), register.value.clone()?))).collect();
+        playlists.sort_by_key(|(id, name)| (name.to_lowercase(), id.clone()));
+        playlists
     }
 
     /// A playlist in its order, each entry with its episode id and sort value.

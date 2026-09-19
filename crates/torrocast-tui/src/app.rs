@@ -9,8 +9,8 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, Mo
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
     Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode,
-    PlaybackState, Podcast, PodcastRef, Problem, ProviderId, QueueItem, Settings, Subscription, Transport, merge,
-    merge_chapters, notes,
+    PlaybackState, Playlist, PlaylistCommand, Podcast, PodcastRef, Problem, ProviderId, QueueItem, Settings,
+    Subscription, Transport, merge, merge_chapters, notes,
 };
 
 use crate::covers::Covers;
@@ -39,17 +39,19 @@ pub enum Section {
     Subscriptions,
     NewEpisodes,
     UpNext,
+    Playlists,
     Downloads,
     Settings,
     Help,
 }
 
 impl Section {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Discover,
         Self::Subscriptions,
         Self::NewEpisodes,
         Self::UpNext,
+        Self::Playlists,
         Self::Downloads,
         Self::Settings,
         Self::Help,
@@ -62,6 +64,7 @@ impl Section {
             Self::Subscriptions => "Subscriptions",
             Self::NewEpisodes => "New Episodes",
             Self::UpNext => "Up Next",
+            Self::Playlists => "Playlists",
             Self::Downloads => "Downloads",
             Self::Settings => "Settings",
             Self::Help => "Help",
@@ -261,6 +264,16 @@ pub struct App {
     pub subscriptions: Vec<Subscription>,
     pub subscriptions_index: usize,
     pub covers: Covers,
+    pub playlists: Vec<Playlist>,
+    pub playlists_index: usize,
+    /// The playlist being looked into, by its id, and the selection within it.
+    pub open_playlist: Option<String>,
+    pub playlist_item: usize,
+    /// `L` was pressed on this episode: which playlist shall it go to? The number is the selection.
+    pub picker: Option<(QueueItem, usize)>,
+    /// The name of a new playlist while it is typed, and the episode that goes into it first.
+    pub playlist_name: Option<(Option<QueueItem>, String)>,
+    confirm_delete: bool,
     pub downloads: Vec<Download>,
     pub downloads_index: usize,
     pub new_episodes: Vec<NewEpisode>,
@@ -336,6 +349,13 @@ impl App {
             subscriptions: Vec::new(),
             subscriptions_index: 0,
             covers: Covers::default(),
+            playlists: Vec::new(),
+            playlists_index: 0,
+            open_playlist: None,
+            playlist_item: 0,
+            picker: None,
+            playlist_name: None,
+            confirm_delete: false,
             downloads: Vec::new(),
             downloads_index: 0,
             new_episodes: Vec::new(),
@@ -395,6 +415,7 @@ impl App {
     #[must_use]
     pub fn is_typing(&self) -> bool {
         match self.section {
+            _ if self.playlist_name.is_some() => true,
             _ if self.player_open => false,
             Section::Settings => self.settings_input.is_some(),
             Section::Discover if self.episode.is_some() => false,
@@ -506,6 +527,16 @@ impl App {
                     self.covers.arrived(&url, &bytes);
                 }
             }
+            Event::Playlists(playlists) => {
+                self.playlists_index = self.playlists_index.min(playlists.len().saturating_sub(1));
+                if self.open_playlist.as_ref().is_some_and(|open| playlists.iter().all(|playlist| playlist.id != *open))
+                {
+                    self.open_playlist = None;
+                }
+                self.playlists = playlists;
+                let count = self.opened_playlist().map_or(0, |playlist| playlist.items.len());
+                self.playlist_item = self.playlist_item.min(count.saturating_sub(1));
+            }
             Event::Downloads(downloads) => {
                 self.downloads_index = self.downloads_index.min(downloads.len().saturating_sub(1));
                 self.downloads = downloads;
@@ -609,6 +640,9 @@ impl App {
         }
         if self.section == Section::Downloads {
             return self.downloads.get(self.downloads_index).map(|download| download.item.clone());
+        }
+        if self.section == Section::Playlists {
+            return self.opened_playlist()?.items.get(self.playlist_item).cloned();
         }
         if self.section != Section::Discover {
             return None;
@@ -754,6 +788,13 @@ impl App {
         if !matches!(key.code, KeyCode::Char('C')) {
             self.confirm_clear = false;
         }
+        if !matches!(key.code, KeyCode::Char('d')) {
+            self.confirm_delete = false;
+        }
+        if self.picker.is_some() {
+            self.on_picker_key(key.code);
+            return;
+        }
         if self.on_transport_key(key.code) {
             return;
         }
@@ -765,7 +806,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.section = Section::Help,
             // Inside an episode the digits belong to the links.
-            KeyCode::Char(digit @ '1'..='7') if !(self.section == Section::Discover && self.episode.is_some()) => {
+            KeyCode::Char(digit @ '1'..='8') if !(self.section == Section::Discover && self.episode.is_some()) => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
             }
             code => match self.section {
@@ -773,6 +814,7 @@ impl App {
                 Section::Subscriptions => self.on_subscriptions_key(code),
                 Section::NewEpisodes => self.on_new_episodes_key(code),
                 Section::UpNext => self.on_up_next_key(code),
+                Section::Playlists => self.on_playlists_key(code),
                 Section::Downloads => self.on_downloads_key(code),
                 Section::Settings => self.on_settings_key(code),
                 Section::Help => {
@@ -791,6 +833,13 @@ impl App {
                 self.player_open = !self.player_open;
                 self.player_chapter = self.playback.now.as_ref().and_then(|now| now.chapter_index()).unwrap_or(0);
             }
+            return true;
+        }
+        if code == KeyCode::Char('L')
+            && !self.player_open
+            && let Some(item) = self.selected_item()
+        {
+            self.picker = Some((item, 0));
             return true;
         }
         if code == KeyCode::Char('D')
@@ -843,7 +892,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => (self.section, self.player_open) = (Section::Help, false),
             // The menu stays one key away, as on every other screen.
-            KeyCode::Char(digit @ '1'..='7') => {
+            KeyCode::Char(digit @ '1'..='8') => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
                 self.player_open = false;
             }
@@ -919,6 +968,84 @@ impl App {
         self.downloads.iter().find(|download| download.item.key() == item_key).map(|download| download.state)
     }
 
+    /// The playlist whose episodes are on screen.
+    #[must_use]
+    pub fn opened_playlist(&self) -> Option<&Playlist> {
+        let open = self.open_playlist.as_ref()?;
+        self.playlists.iter().find(|playlist| playlist.id == *open)
+    }
+
+    /// Choosing a playlist for an episode: the playlists, and below them "a new one".
+    fn on_picker_key(&mut self, code: KeyCode) {
+        let Some((item, index)) = self.picker.clone() else { return };
+        match code {
+            KeyCode::Esc | KeyCode::Char('q') => self.picker = None,
+            KeyCode::Enter => {
+                self.picker = None;
+                match self.playlists.get(index) {
+                    Some(playlist) => {
+                        let (name, title): (String, String) =
+                            (playlist.name.clone(), item.title.chars().take(40).collect());
+                        self.notice = Some(match self.lang {
+                            Lang::De => format!("„{title}“ liegt jetzt in „{name}“."),
+                            Lang::En => format!("“{title}” is now in “{name}”."),
+                        });
+                        self.commands
+                            .push(Command::Playlist(PlaylistCommand::Add { playlist: playlist.id.clone(), item }));
+                    }
+                    None => self.playlist_name = Some((Some(item), String::new())),
+                }
+            }
+            code => {
+                let mut index = index;
+                move_selection(&mut index, self.playlists.len() + 1, code);
+                self.picker = Some((item, index));
+            }
+        }
+    }
+
+    fn on_playlists_key(&mut self, code: KeyCode) {
+        if let Some(playlist) = self.opened_playlist().cloned() {
+            match code {
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => self.open_playlist = None,
+                KeyCode::Enter => {
+                    if let Some(item) = self.selected_item() {
+                        self.transport(Transport::PlayNow(item));
+                    }
+                }
+                KeyCode::Char('d') | KeyCode::Delete => {
+                    if let Some(item) = self.selected_item() {
+                        self.commands.push(Command::Playlist(PlaylistCommand::Remove { playlist: playlist.id, item }));
+                    }
+                }
+                code => move_selection(&mut self.playlist_item, playlist.items.len(), code),
+            }
+            return;
+        }
+        let chosen = self.playlists.get(self.playlists_index).map(|playlist| playlist.id.clone());
+        match (code, chosen) {
+            (KeyCode::Char('N'), _) => self.playlist_name = Some((None, String::new())),
+            (KeyCode::Enter | KeyCode::Right | KeyCode::Char('l'), Some(playlist)) => {
+                self.open_playlist = Some(playlist);
+                self.playlist_item = 0;
+            }
+            (KeyCode::Char(key @ ('a' | 'A')), Some(playlist)) => {
+                self.commands.push(Command::Playlist(PlaylistCommand::Queue { playlist, first: key == 'A' }));
+            }
+            // A playlist is more than one keystroke's worth of work: ask once.
+            (KeyCode::Char('d') | KeyCode::Delete, Some(playlist)) => {
+                if self.confirm_delete {
+                    self.confirm_delete = false;
+                    self.commands.push(Command::Playlist(PlaylistCommand::Delete(playlist)));
+                } else {
+                    self.confirm_delete = true;
+                    self.notice = Some(self.lang.t("Press d again to delete the playlist.").to_owned());
+                }
+            }
+            (code, _) => move_selection(&mut self.playlists_index, self.playlists.len(), code),
+        }
+    }
+
     fn on_downloads_key(&mut self, code: KeyCode) {
         match code {
             KeyCode::Enter => {
@@ -972,7 +1099,9 @@ impl App {
 
     /// Applies `change` to whichever text field has the keyboard.
     fn edit(&mut self, change: impl FnOnce(&mut String)) {
-        if let Some((_, text)) = &mut self.settings_input {
+        if let Some((_, name)) = &mut self.playlist_name {
+            change(name);
+        } else if let Some((_, text)) = &mut self.settings_input {
             change(text);
         } else if let Some(view) = self.podcast.as_mut().filter(|view| view.filtering) {
             change(&mut view.filter);
@@ -984,6 +1113,22 @@ impl App {
     }
 
     fn on_typing_key(&mut self, code: KeyCode) {
+        if self.playlist_name.is_some() {
+            match code {
+                KeyCode::Char(character) => self.edit(|text| text.push(character)),
+                KeyCode::Backspace => self.edit(|text| {
+                    text.pop();
+                }),
+                KeyCode::Esc => self.playlist_name = None,
+                KeyCode::Enter => {
+                    if let Some((first, name)) = self.playlist_name.take().filter(|(_, name)| !name.trim().is_empty()) {
+                        self.commands.push(Command::Playlist(PlaylistCommand::Create { name, first }));
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         if self.settings_input.is_some() {
             match code {
                 KeyCode::Char(character) => self.edit(|text| text.push(character)),
@@ -1316,6 +1461,7 @@ impl App {
             Section::Subscriptions => self.on_subscriptions_key(code),
             Section::NewEpisodes => self.on_new_episodes_key(code),
             Section::UpNext => self.on_up_next_key(code),
+            Section::Playlists => self.on_playlists_key(code),
             Section::Downloads => self.on_downloads_key(code),
             Section::Settings => self.on_settings_key(code),
             Section::Help => {}

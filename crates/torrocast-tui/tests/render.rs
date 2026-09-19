@@ -220,7 +220,7 @@ fn escape_walks_back_one_level_at_a_time() {
 fn sources_are_switched_in_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('6'));
+    press(&mut app, KeyCode::Char('7'));
     assert!(screen(&app, 104, 28).contains("Ausgeschaltet"));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
@@ -318,7 +318,7 @@ fn the_player_sits_under_the_menu_on_every_screen() {
     assert!(!screen(&app, 104, 32).contains("Läuft gerade"), "nothing plays, nothing shown");
     app.terminal_height = 32;
     playing(&mut app, &["Eins", "Zwei"]);
-    for key in ['1', '2', '3', '4', '5', '6', '7'] {
+    for key in ['1', '2', '3', '4', '5', '6', '7', '8'] {
         press(&mut app, KeyCode::Char(key));
         let text = screen(&app, 104, 32);
         assert!(text.contains("0  Läuft gerade"), "missing on screen {key}");
@@ -381,7 +381,7 @@ fn the_playback_keys_work_everywhere_but_not_while_typing() {
 fn without_playback_the_space_bar_still_serves_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('6'));
+    press(&mut app, KeyCode::Char('7'));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Char(' '));
@@ -544,7 +544,7 @@ fn subscriptions_open_their_podcast_and_escape_leads_back() {
 fn the_settings_say_where_the_library_lives() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('6'));
+    press(&mut app, KeyCode::Char('7'));
     app.library = Ok("/home/ada/Dropbox/torrocast".into());
     let text = screen(&app, 104, 30);
     assert!(text.contains("Bibliotheks-Ordner"));
@@ -617,7 +617,7 @@ fn new_episodes_are_listed_counted_and_queued() {
 fn podcast_index_takes_the_users_own_key_and_checks_it() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('6'));
+    press(&mut app, KeyCode::Char('7'));
     press(&mut app, KeyCode::Down);
     assert!(screen(&app, 104, 30).contains("Kein Schlüssel hinterlegt"));
 
@@ -667,7 +667,7 @@ fn episodes_are_downloaded_played_from_disk_and_deleted() {
     assert!(screen(&app, 104, 28).contains("↓BS 012"), "the list marks what is on its way or here");
 
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('5'));
+    press(&mut app, KeyCode::Char('6'));
     let text = screen(&app, 104, 28);
     assert!(text.contains("Downloads · 2 · 49 MB"));
     assert!(text.contains("↓ 50 %"));
@@ -728,4 +728,85 @@ fn without_a_picker_no_cover_is_even_asked_for() {
     press(&mut app, KeyCode::Enter);
     press(&mut app, KeyCode::Enter);
     assert!(app.commands.iter().all(|command| !matches!(command, Command::Cover { .. })));
+}
+
+// ── playlists ────────────────────────────────────────────────────────────────
+
+#[test]
+fn an_episode_goes_into_a_playlist_from_wherever_it_is_seen() {
+    use torrocast_core::{Playlist, PlaylistCommand};
+
+    let mut app = app();
+    opened_podcast(&mut app);
+    press(&mut app, KeyCode::Char('L'));
+    let asked = screen(&app, 104, 28);
+    assert!(asked.contains("In welche Playlist?") && asked.contains("Eine neue Playlist …"));
+
+    // No playlist yet: the only choice is a new one, which wants a name.
+    press(&mut app, KeyCode::Enter);
+    assert!(app.is_typing());
+    type_text(&mut app, "Zum Einschlafen");
+    assert!(screen(&app, 104, 28).contains("Zum Einschlafen▏"));
+    press(&mut app, KeyCode::Enter);
+    let Some(Command::Playlist(PlaylistCommand::Create { name, first })) = app.commands.pop() else {
+        panic!("a playlist is made")
+    };
+    assert_eq!(name, "Zum Einschlafen");
+    assert_eq!(
+        first.map(|item| item.title).as_deref(),
+        Some("BS 012 · Haushalt & Rente"),
+        "and the episode goes into it"
+    );
+
+    // With a playlist there, L and enter put the next episode into it.
+    app.on_event(Event::Playlists(vec![Playlist {
+        id: "pl-1".into(),
+        name: "Zum Einschlafen".into(),
+        items: vec![item("Eins")],
+    }]));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Char('L'));
+    press(&mut app, KeyCode::Enter);
+    assert!(
+        matches!(app.commands.pop(), Some(Command::Playlist(PlaylistCommand::Add { playlist, .. })) if playlist == "pl-1")
+    );
+    assert!(app.picker.is_none());
+}
+
+#[test]
+fn playlists_are_opened_queued_whole_and_deleted_with_care() {
+    use torrocast_core::{Playlist, PlaylistCommand};
+
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('5'));
+    assert!(screen(&app, 104, 28).contains("Noch keine Playlists."));
+    app.on_event(Event::Playlists(vec![Playlist {
+        id: "pl-1".into(),
+        name: "Unterwegs".into(),
+        items: vec![item("Eins"), item("Zwei")],
+    }]));
+    assert!(screen(&app, 104, 28).contains("2 Folgen · 2:00:00"));
+
+    press(&mut app, KeyCode::Char('A'));
+    assert_eq!(
+        app.commands.pop(),
+        Some(Command::Playlist(PlaylistCommand::Queue { playlist: "pl-1".into(), first: true }))
+    );
+    press(&mut app, KeyCode::Char('d'));
+    assert!(app.commands.is_empty() && screen(&app, 104, 28).contains("Drück noch einmal d"));
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(app.commands.pop(), Some(Command::Playlist(PlaylistCommand::Delete("pl-1".into()))));
+
+    press(&mut app, KeyCode::Enter);
+    assert!(screen(&app, 104, 28).contains("Playlists › Unterwegs · 2 Folgen"));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Char('p'));
+    assert!(matches!(transports(&mut app).as_slice(), [Transport::PlayNow(item)] if item.title == "Zwei"));
+    press(&mut app, KeyCode::Char('d'));
+    assert!(
+        matches!(app.commands.pop(), Some(Command::Playlist(PlaylistCommand::Remove { item, .. })) if item.title == "Zwei")
+    );
+    press(&mut app, KeyCode::Esc);
+    assert!(app.open_playlist.is_none());
 }

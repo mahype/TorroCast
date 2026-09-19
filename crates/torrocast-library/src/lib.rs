@@ -40,6 +40,12 @@ pub fn episode_id(key: &str) -> String {
     format!("ep1:{}", Uuid::new_v5(&Uuid::NAMESPACE_URL, key.as_bytes()))
 }
 
+/// A name for a new playlist in the library's files.
+#[must_use]
+pub fn new_playlist_id() -> String {
+    format!("pl-{}", &Uuid::new_v4().simple().to_string()[..12])
+}
+
 #[must_use]
 pub fn new_device_id() -> String {
     Uuid::new_v4().simple().to_string()[..12].to_owned()

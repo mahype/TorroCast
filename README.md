@@ -40,6 +40,9 @@ following `LANG`. An address typed into the search field is opened as a feed.
   `t` sets a sleep timer.
   The player sits under the menu on every screen, with a level meter and clickable
   buttons; `0` opens the large player with the chapter list.
+- **Playlists:** `L` on any episode puts it into a playlist of yours (or a new one); a whole
+  playlist goes into Up Next with `a` or `A`. They live in the library folder, so every device
+  that shares it has them.
 - **Media keys (Linux):** TorroCast announces itself over MPRIS, so the keyboard's media keys,
   the panel's sound menu and the lock screen see what plays and can steer it.
 - **Up Next:** `a` puts an episode at the end, `A` at the front — from any episode list,
@@ -60,7 +63,7 @@ following `LANG`. An address typed into the search field is opened as a feed.
   playing is first in line after a restart and resumes where it stopped.
 - Settings are kept in `config.toml` in the platform's config directory.
 
-Not yet: media keys on macOS and Windows, several playlists, Opus and HE-AAC audio.
+Not yet: media keys on macOS and Windows, Opus and HE-AAC audio.
 
 ## Layout
 

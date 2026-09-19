@@ -298,6 +298,17 @@ impl Playback {
         (Some(target), Vec::new())
     }
 
+    /// Queues a whole list, in its order, first or last. What plays is left out; what was queued already moves.
+    pub fn enqueue_many(&mut self, items: Vec<QueueItem>, first: bool) -> Vec<Action> {
+        let playing = self.now.as_ref().map(|now| now.item.key());
+        let items: Vec<QueueItem> = items.into_iter().filter(|item| Some(item.key()) != playing).collect();
+        self.up_next.retain(|queued| items.iter().all(|item| item.key() != queued.key()));
+        let at = if first { 0 } else { self.up_next.len() };
+        self.up_next.splice(at..at, items);
+        // Into silence: the first of them starts.
+        if self.now.is_none() { self.next_episode() } else { Vec::new() }
+    }
+
     pub fn remove(&mut self, index: usize) {
         if index < self.up_next.len() {
             self.up_next.remove(index);
@@ -510,6 +521,20 @@ mod tests {
         assert_eq!(playback.enqueue(item("c"), false).0, None, "asking for the same end takes it out");
         assert_eq!(titles(&playback), vec!["a", "b"]);
         assert_eq!(playback.enqueue(item("playing"), true).0, None, "what plays is not queued");
+    }
+
+    #[test]
+    fn a_whole_list_is_queued_in_its_order() {
+        let mut playback = Playback::default();
+        playback.enqueue(item("playing"), false);
+        playback.enqueue(item("b"), false);
+        playback.enqueue_many(vec![item("a"), item("playing"), item("b"), item("c")], true);
+        assert_eq!(titles(&playback), vec!["a", "b", "c"], "what plays is left out, what was queued moves");
+
+        let mut silent = Playback::default();
+        let actions = silent.enqueue_many(vec![item("x"), item("y")], false);
+        assert!(matches!(&actions[0], Action::Load { audio_url, .. } if audio_url.ends_with("x.mp3")));
+        assert_eq!(titles(&silent), vec!["y"]);
     }
 
     #[test]

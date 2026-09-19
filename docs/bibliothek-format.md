@@ -56,7 +56,8 @@ library/
 
 Arten: `DeviceRegistered`, `Subscribed`, `Unsubscribed`, `PlaybackUpdated`
 (`episode`, `position_ms`, `duration_ms`, `played`), `QueueItemSet` (`playlist`,
-`episode`, `sort`, `item`), `QueueItemRemoved`. Unbekannte Arten und Felder werden
+`episode`, `sort`, `item`), `QueueItemRemoved`, `PlaylistSet` (`playlist`, `name`),
+`PlaylistRemoved`. Unbekannte Arten und Felder werden
 überlesen und bleiben in der Datei des Geräts, das sie schrieb, unangetastet.
 
 - **Podcast-Kennung:** die `podcast:guid` des Feeds; fehlt sie, die UUIDv5 aus der
@@ -86,4 +87,4 @@ Andere Geräte werden alle 30 Sekunden eingelesen.
   etwa 60 Zeilen; das wird erst nach langer Zeit relevant.
 - Beobachten des Ordners statt Nachsehen im Takt.
 - Erkennen einer kopierten Geräte-Kennung (geklontes Home-Verzeichnis).
-- Einstellungen und Favoriten im Ordner; mehrere Playlists (das Format sieht sie vor).
+- Einstellungen und Favoriten im Ordner.

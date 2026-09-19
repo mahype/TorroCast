@@ -28,6 +28,7 @@ use torrocast_net::{Fetch, FetchError};
 
 pub use downloads::{Download, DownloadState};
 pub use fresh::NewEpisode;
+pub use keeper::Playlist;
 pub use playback::{NowPlaying, QueueItem, Sleep, Status};
 pub use settings::Settings;
 pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merge};
@@ -110,6 +111,7 @@ pub enum Command {
     Cover {
         url: String,
     },
+    Playlist(PlaylistCommand),
     /// Keeps an episode on this machine, to be heard without a network.
     Download(QueueItem),
     /// Deletes a downloaded episode, by its library id.
@@ -124,6 +126,30 @@ pub enum Command {
         title: String,
         guid: Option<String>,
         subscribed: bool,
+    },
+}
+
+/// The user's own playlists. Up Next is not one of them; it is what the player consumes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PlaylistCommand {
+    /// A new playlist, optionally with its first episode.
+    Create {
+        name: String,
+        first: Option<QueueItem>,
+    },
+    Delete(String),
+    Add {
+        playlist: String,
+        item: QueueItem,
+    },
+    Remove {
+        playlist: String,
+        item: QueueItem,
+    },
+    /// The whole playlist into Up Next, at its front or its end.
+    Queue {
+        playlist: String,
+        first: bool,
     },
 }
 
@@ -204,6 +230,8 @@ pub enum Event {
         url: String,
         bytes: Option<Arc<Vec<u8>>>,
     },
+    /// The user's playlists, by name — at the start and whenever one changes, here or on another device.
+    Playlists(Vec<Playlist>),
     /// Every download, the newest last — whenever one starts, moves on, ends or is deleted.
     Downloads(Vec<Download>),
     /// Whether Podcast Index accepted the user's key. `Refused(401)` is a wrong key.
@@ -305,6 +333,7 @@ impl Core {
         if let Some(keeper) = &core.keeper {
             keeper.restore(&mut core.playback);
             let _ = core.events.send(Event::Subscriptions(keeper.subscriptions()));
+            let _ = core.events.send(Event::Playlists(keeper.playlists()));
         }
         core.publish();
         (core, receiver)
@@ -374,6 +403,7 @@ impl Core {
             }),
             Command::Transport(transport) => self.transport(transport),
             Command::RefreshSubscriptions => self.refresh(),
+            Command::Playlist(command) => self.playlist(command),
             Command::Cover { url } => self.spawn(move |shared| {
                 let bytes = cover(shared, &url).map(Arc::new);
                 Event::Cover { url, bytes }
@@ -465,6 +495,33 @@ impl Core {
         self.carry_out(actions);
         self.keep();
         self.publish();
+    }
+
+    fn playlist(&mut self, command: PlaylistCommand) {
+        let Some(keeper) = &mut self.keeper else { return };
+        let mut queued = None;
+        match command {
+            PlaylistCommand::Create { name, first } => {
+                let playlist = keeper.create_playlist(&name);
+                if let Some(item) = first {
+                    keeper.add_to_playlist(&playlist, &item);
+                }
+            }
+            PlaylistCommand::Delete(playlist) => keeper.delete_playlist(&playlist),
+            PlaylistCommand::Add { playlist, item } => keeper.add_to_playlist(&playlist, &item),
+            PlaylistCommand::Remove { playlist, item } => keeper.remove_from_playlist(&playlist, &item),
+            PlaylistCommand::Queue { playlist, first } => {
+                queued =
+                    keeper.playlists().into_iter().find(|known| known.id == playlist).map(|known| (known.items, first));
+            }
+        }
+        let _ = self.events.send(Event::Playlists(keeper.playlists()));
+        if let Some((items, first)) = queued {
+            let actions = self.playback.enqueue_many(items, first);
+            self.carry_out(actions);
+            self.keep();
+            self.publish();
+        }
     }
 
     /// Fetches all subscribed feeds again, a few at a time.
@@ -675,6 +732,7 @@ impl Core {
             if keeper.look() {
                 keeper.restore(&mut self.playback);
                 let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
+                let _ = self.events.send(Event::Playlists(keeper.playlists()));
                 changed = true;
             }
         }
@@ -692,6 +750,7 @@ impl Core {
         .map_err(|error| error.to_string())?;
         keeper.restore(&mut self.playback);
         let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
+        let _ = self.events.send(Event::Playlists(keeper.playlists()));
         self.keeper = Some(keeper);
         self.keep();
         self.publish();
@@ -877,7 +936,7 @@ mod tests {
     fn next(events: &std::sync::mpsc::Receiver<Event>) -> Event {
         loop {
             match events.recv_timeout(Duration::from_secs(5)).expect("the worker answers") {
-                Event::Playback(_) | Event::Subscriptions(_) => {}
+                Event::Playback(_) | Event::Subscriptions(_) | Event::Playlists(_) => {}
                 event => return event,
             }
         }
