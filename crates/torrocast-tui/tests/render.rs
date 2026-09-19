@@ -220,7 +220,7 @@ fn escape_walks_back_one_level_at_a_time() {
 fn sources_are_switched_in_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('5'));
+    press(&mut app, KeyCode::Char('6'));
     assert!(screen(&app, 104, 28).contains("Ausgeschaltet"));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
@@ -317,7 +317,7 @@ fn the_player_sits_under_the_menu_on_every_screen() {
     assert!(!screen(&app, 104, 32).contains("Läuft gerade"), "nothing plays, nothing shown");
     app.terminal_height = 32;
     playing(&mut app, &["Eins", "Zwei"]);
-    for key in ['1', '2', '3', '4', '5', '6'] {
+    for key in ['1', '2', '3', '4', '5', '6', '7'] {
         press(&mut app, KeyCode::Char(key));
         let text = screen(&app, 104, 32);
         assert!(text.contains("0  Läuft gerade"), "missing on screen {key}");
@@ -380,7 +380,7 @@ fn the_playback_keys_work_everywhere_but_not_while_typing() {
 fn without_playback_the_space_bar_still_serves_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('5'));
+    press(&mut app, KeyCode::Char('6'));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Char(' '));
@@ -543,7 +543,7 @@ fn subscriptions_open_their_podcast_and_escape_leads_back() {
 fn the_settings_say_where_the_library_lives() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('5'));
+    press(&mut app, KeyCode::Char('6'));
     app.library = Ok("/home/ada/Dropbox/torrocast".into());
     let text = screen(&app, 104, 30);
     assert!(text.contains("Bibliotheks-Ordner"));
@@ -616,7 +616,7 @@ fn new_episodes_are_listed_counted_and_queued() {
 fn podcast_index_takes_the_users_own_key_and_checks_it() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('5'));
+    press(&mut app, KeyCode::Char('6'));
     press(&mut app, KeyCode::Down);
     assert!(screen(&app, 104, 30).contains("Kein Schlüssel hinterlegt"));
 
@@ -642,4 +642,38 @@ fn podcast_index_takes_the_users_own_key_and_checks_it() {
     assert!(app.settings.sources.podcast_index);
     app.on_event(Event::PodcastIndexVerified(Ok(())));
     assert!(screen(&app, 104, 30).contains("●  Podcast Index"));
+}
+
+// ── downloads ────────────────────────────────────────────────────────────────
+
+#[test]
+fn episodes_are_downloaded_played_from_disk_and_deleted() {
+    use torrocast_core::{Download, DownloadState};
+
+    let mut app = app();
+    opened_podcast(&mut app);
+    press(&mut app, KeyCode::Char('D'));
+    let Some(Command::Download(wanted)) = app.commands.pop() else { panic!("D downloads the selected episode") };
+    assert_eq!(wanted.title, "BS 012 · Haushalt & Rente");
+
+    app.on_event(Event::Downloads(vec![
+        Download {
+            item: wanted.clone(),
+            state: DownloadState::Loading { received: 30_000_000, total: Some(60_000_000) },
+        },
+        Download { item: item("Fertig"), state: DownloadState::Done { bytes: 48_200_000 } },
+    ]));
+    assert!(screen(&app, 104, 28).contains("↓BS 012"), "the list marks what is on its way or here");
+
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('5'));
+    let text = screen(&app, 104, 28);
+    assert!(text.contains("Downloads · 2 · 49 MB"));
+    assert!(text.contains("↓ 50 %"));
+
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Enter);
+    assert!(matches!(transports(&mut app).as_slice(), [Transport::PlayNow(item)] if item.title == "Fertig"));
+    press(&mut app, KeyCode::Char('d'));
+    assert_eq!(app.commands.pop(), Some(Command::DeleteDownload(item("Fertig").library_id())));
 }

@@ -3,7 +3,8 @@
 //! and the real client lives in exactly one place.
 
 use std::fmt;
-use std::io::Read;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::time::Duration;
 
 /// Directories refuse generic agents (Podcast Index answers 403), and hosters
@@ -48,6 +49,15 @@ pub trait Fetch: Send + Sync {
     fn get_with(&self, url: &str, headers: &[(&str, String)]) -> Result<Vec<u8>, FetchError> {
         let _ = headers;
         self.get(url)
+    }
+
+    /// Writes the body of `url` to the file `to`, telling `progress` how many bytes have
+    /// arrived and how many are expected. Returns the size.
+    fn download(&self, url: &str, to: &Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<u64, FetchError> {
+        let body = self.get(url)?;
+        std::fs::write(to, &body).map_err(|error| FetchError::Unreachable(error.to_string()))?;
+        progress(body.len() as u64, Some(body.len() as u64));
+        Ok(body.len() as u64)
     }
 
     /// Bytes `start..=end` of `url`. Used to read a tag at the head of an
@@ -110,6 +120,28 @@ impl Fetch for HttpClient {
             request = request.set(name, value);
         }
         Self::read(request.call().map_err(translate)?, MAX_BODY)
+    }
+
+    /// Straight to disk, a chunk at a time: an episode never has to fit into memory.
+    fn download(&self, url: &str, to: &Path, progress: &mut dyn FnMut(u64, Option<u64>)) -> Result<u64, FetchError> {
+        let response = self.agent.get(url).call().map_err(translate)?;
+        let total = response.header("Content-Length").and_then(|length| length.parse().ok());
+        let failed = |error: std::io::Error| FetchError::Unreachable(error.to_string());
+        let mut file = std::fs::File::create(to).map_err(failed)?;
+        let mut body = response.into_reader();
+        let mut chunk = vec![0u8; 64 * 1024];
+        let mut received = 0u64;
+        loop {
+            let read = body.read(&mut chunk).map_err(failed)?;
+            if read == 0 {
+                break;
+            }
+            file.write_all(&chunk[..read]).map_err(failed)?;
+            received += read as u64;
+            progress(received, total);
+        }
+        file.sync_all().map_err(failed)?;
+        Ok(received)
     }
 
     fn get_range(&self, url: &str, start: u64, end: u64) -> Result<Vec<u8>, FetchError> {

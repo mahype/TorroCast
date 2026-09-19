@@ -2,6 +2,7 @@
 //! reads [`Event`]s; everything slow happens on worker threads in between.
 //! Nothing here knows what a terminal is.
 
+pub mod downloads;
 pub mod fresh;
 pub mod keeper;
 pub mod playback;
@@ -12,6 +13,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 
+use downloads::Downloads;
 use keeper::Keeper;
 use playback::{Action, Playback};
 use torrocast_player::{Media, Player, PlayerEvent};
@@ -23,6 +25,7 @@ use torrocast_directory::{DirectoryError, DirectoryProvider};
 use torrocast_feed::chapters;
 use torrocast_net::{Fetch, FetchError};
 
+pub use downloads::{Download, DownloadState};
 pub use fresh::NewEpisode;
 pub use playback::{NowPlaying, QueueItem, Sleep, Status};
 pub use settings::Settings;
@@ -102,6 +105,10 @@ pub enum Command {
         mp3_url: Option<String>,
     },
     Transport(Transport),
+    /// Keeps an episode on this machine, to be heard without a network.
+    Download(QueueItem),
+    /// Deletes a downloaded episode, by its library id.
+    DeleteDownload(String),
     /// Asks Podcast Index whether it accepts the key in the settings.
     VerifyPodcastIndex,
     /// Fetches every subscribed feed again; the list of new episodes follows as the answers come in.
@@ -187,6 +194,8 @@ pub enum Event {
         pending: usize,
         failed: usize,
     },
+    /// Every download, the newest last — whenever one starts, moves on, ends or is deleted.
+    Downloads(Vec<Download>),
     /// Whether Podcast Index accepted the user's key. `Refused(401)` is a wrong key.
     PodcastIndexVerified(Result<(), Problem>),
     /// All subscriptions, alphabetically — at the start and whenever they change, here or on another device.
@@ -239,6 +248,7 @@ pub struct Core {
     refresh_failed: usize,
     /// `None` when the library folder could not be opened; everything then lasts for the session.
     keeper: Option<Keeper>,
+    downloads: Option<Downloads>,
 }
 
 impl Core {
@@ -271,6 +281,7 @@ impl Core {
             refresh_pending: 0,
             refresh_failed: 0,
             keeper,
+            downloads: None,
         };
         let mut core = core;
         if let Some(keeper) = &core.keeper {
@@ -279,6 +290,13 @@ impl Core {
         }
         core.publish();
         (core, receiver)
+    }
+
+    /// Says where downloads are kept; what is already there is reported at once.
+    pub fn set_download_directory(&mut self, directory: &std::path::Path) {
+        let downloads = Downloads::open(directory);
+        let _ = self.events.send(Event::Downloads(downloads.list()));
+        self.downloads = Some(downloads);
     }
 
     pub fn set_settings(&mut self, settings: Settings) {
@@ -331,6 +349,18 @@ impl Core {
             }),
             Command::Transport(transport) => self.transport(transport),
             Command::RefreshSubscriptions => self.refresh(),
+            Command::Download(item) => {
+                if let Some(downloads) = &mut self.downloads {
+                    downloads.start(item, Arc::clone(&self.shared.fetch));
+                    let _ = self.events.send(Event::Downloads(downloads.list()));
+                }
+            }
+            Command::DeleteDownload(id) => {
+                if let Some(downloads) = &mut self.downloads {
+                    downloads.remove(&id);
+                    let _ = self.events.send(Event::Downloads(downloads.list()));
+                }
+            }
             Command::VerifyPodcastIndex => self.spawn(|shared| {
                 let outcome = match shared.podcast_index.read().ok().as_deref() {
                     Some(Some(index)) => index.verify(shared.fetch.as_ref()).map_err(Problem::from),
@@ -484,12 +514,16 @@ impl Core {
                 });
                 continue;
             }
+            // An episode that is on this machine is played from there.
+            let local = self.playback.now.as_ref().map(|now| now.item.library_id()).and_then(|id| {
+                self.downloads.as_ref().and_then(|downloads| downloads.file_of(&id).map(std::path::Path::to_owned))
+            });
             let output = self.output;
             let (player, _) = self.player.get_or_insert_with(|| Player::new(output));
             match action {
                 Action::Load { audio_url, start_ms } => {
                     player.set_speed(self.playback.speed);
-                    player.load(Media::Url(audio_url), start_ms);
+                    player.load(local.map_or(Media::Url(audio_url), Media::File), start_ms);
                 }
                 Action::Pause => player.pause(),
                 Action::Resume => player.resume(),
@@ -538,6 +572,11 @@ impl Core {
                 PlayerEvent::Loading | PlayerEvent::Paused | PlayerEvent::Resumed | PlayerEvent::Stopped => {}
             }
             changed = true;
+        }
+        if let Some(downloads) = &mut self.downloads
+            && downloads.pump()
+        {
+            let _ = self.events.send(Event::Downloads(downloads.list()));
         }
         let answers: Vec<Refreshed> = self.refreshed.1.try_iter().collect();
         if !answers.is_empty() {

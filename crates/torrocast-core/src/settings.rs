@@ -15,6 +15,8 @@ pub struct Settings {
     /// The folder the library lives in — inside Dropbox, Syncthing, a NAS mount,
     /// wherever it should be backed up and shared from. `None` is the default place.
     pub library_dir: Option<String>,
+    /// Where downloaded episodes are kept. Never inside the library folder: audio is large and is not synced.
+    pub download_dir: Option<String>,
     /// This device's name in the library. Made up once, then kept.
     pub device_id: Option<String>,
 }
@@ -40,7 +42,13 @@ impl Sources {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { country: "us".to_owned(), sources: Sources::default(), library_dir: None, device_id: None }
+        Self {
+            country: "us".to_owned(),
+            sources: Sources::default(),
+            library_dir: None,
+            download_dir: None,
+            device_id: None,
+        }
     }
 }
 
@@ -135,6 +143,12 @@ pub fn default_library_dir(platform: Platform, environment: &HashMap<String, Str
         Platform::Windows => variable("APPDATA")?.join("TorroCast"),
     };
     Some(directory.join("library"))
+}
+
+/// Where downloads go unless the user chose a folder: beside the library, not in it.
+#[must_use]
+pub fn default_download_dir(platform: Platform, environment: &HashMap<String, String>) -> Option<PathBuf> {
+    default_library_dir(platform, environment).map(|library| library.with_file_name("downloads"))
 }
 
 #[cfg(test)]

@@ -102,6 +102,16 @@ const GERMAN: &[(&str, &str)] = &[
     ("Width", "Breite"),
     ("Height", "Höhe"),
     ("Make the window larger — TorroCast keeps running.", "Zieh das Fenster größer – TorroCast läuft weiter."),
+    // downloads
+    ("Downloads", "Downloads"),
+    ("download", "Laden"),
+    ("delete", "Löschen"),
+    ("download, to hear it without a network", "herunterladen, um sie ohne Netz zu hören"),
+    ("failed — D tries again", "fehlgeschlagen – D versucht es neu"),
+    (
+        "Nothing downloaded. D on an episode keeps it on this machine, to be heard without a network.",
+        "Nichts heruntergeladen. D auf einer Folge legt sie auf diesen Rechner, zum Hören ohne Netz.",
+    ),
     // new episodes
     ("New Episodes", "Neue Folgen"),
     ("still loading feeds", "Feeds laden noch"),

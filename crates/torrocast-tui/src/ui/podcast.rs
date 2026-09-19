@@ -167,6 +167,14 @@ fn draw_episodes(frame: &mut Frame<'_>, area: Rect, app: &App, view: &PodcastVie
                 Some(crate::app::QueueState::Queued(_)) => ("✓", theme::GREEN),
                 None => (" ", theme::MUTED),
             };
+            // Queue state first; an episode that is simply on this machine shows that.
+            let here = torrocast_core::QueueItem::from_feed(podcast, view.reference.feed_url.as_deref(), episode)
+                .and_then(|item| app.download_state(&item.key()));
+            let (queue_mark, queue_colour) = match (queue_mark, here) {
+                (" ", Some(torrocast_core::DownloadState::Done { .. })) => ("↓", theme::SILVER),
+                (" ", Some(torrocast_core::DownloadState::Loading { .. })) => ("↓", theme::FAINT),
+                (mark, _) => (mark, queue_colour),
+            };
             let (base, quiet, mark) = if chosen {
                 let background = Style::new().bg(theme::SELECTION);
                 (theme::selected(), background.fg(theme::MUTED), background.fg(theme::CYAN))

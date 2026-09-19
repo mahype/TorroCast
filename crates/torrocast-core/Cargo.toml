@@ -18,4 +18,5 @@ torrocast-library = { path = "../torrocast-library" }
 torrocast-player = { path = "../torrocast-player" }
 chrono.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 toml = "0.8"

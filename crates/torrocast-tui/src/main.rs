@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind};
 use ratatui::crossterm::execute;
 use torrocast_core::keeper::Keeper;
-use torrocast_core::settings::{Platform, config_file, default_library_dir};
+use torrocast_core::settings::{Platform, config_file, default_download_dir, default_library_dir};
 use torrocast_core::{Core, OutputKind, Settings};
 use torrocast_net::HttpClient;
 use torrocast_tui::app::App;
@@ -66,6 +66,15 @@ fn main() -> std::io::Result<()> {
     let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone(), output, keeper.ok());
     let mut app = App::new(Lang::from_locale(&locale), settings);
     app.library = library;
+    let downloads = app
+        .settings
+        .download_dir
+        .clone()
+        .map(std::path::PathBuf::from)
+        .or_else(|| default_download_dir(Platform::current(), &environment));
+    if let Some(directory) = &downloads {
+        core.set_download_directory(directory);
+    }
     // The first look at what the subscriptions have published.
     core.send(torrocast_core::Command::RefreshSubscriptions);
 

@@ -2,6 +2,7 @@
 //! here; each section draws its own content into what is left.
 
 mod discover;
+mod downloads;
 mod episode;
 mod fresh;
 mod help;
@@ -57,6 +58,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
         Section::Subscriptions => subscriptions::draw(frame, content, app),
         Section::NewEpisodes => fresh::draw(frame, content, app),
         Section::UpNext => upnext::draw(frame, content, app),
+        Section::Downloads => downloads::draw(frame, content, app),
         Section::Settings => settings::draw(frame, content, app),
         Section::Help => help::draw(frame, content, app),
     }
@@ -182,7 +184,7 @@ fn key_hints(app: &App) -> Line<'static> {
             (None, Some(view)) if view.filtering => hints.extend([("enter", "done"), ("esc", "back")]),
             (None, Some(_)) => {
                 hints.extend([("enter", "open"), ("p", "play"), ("a", "to the end"), ("A", "to the front")]);
-                hints.extend([("s", "subscribe"), ("/", "filter"), ("esc", "back")]);
+                hints.extend([("D", "download"), ("s", "subscribe"), ("/", "filter"), ("esc", "back")]);
             }
             (None, None) if app.search.editing && app.tab == Tab::Search => {
                 hints.extend([
@@ -204,10 +206,10 @@ fn key_hints(app: &App) -> Line<'static> {
                 if app.tab == Tab::Charts && app.charts.category.is_some() {
                     hints.push(("esc", "all charts"));
                 }
-                hints.extend([("1-6", "menu"), ("q", "quit")]);
+                hints.extend([("1-7", "menu"), ("q", "quit")]);
             }
         },
-        Section::Subscriptions => hints.extend([("↑↓", "select"), ("enter", "open"), ("1-6", "menu"), ("q", "quit")]),
+        Section::Subscriptions => hints.extend([("↑↓", "select"), ("enter", "open"), ("1-7", "menu"), ("q", "quit")]),
         Section::NewEpisodes => {
             hints.extend([
                 ("enter", "open"),
@@ -216,7 +218,7 @@ fn key_hints(app: &App) -> Line<'static> {
                 ("A", "to the front"),
                 ("r", "reload"),
             ]);
-            hints.push(("1-6", "menu"));
+            hints.push(("1-7", "menu"));
         }
         Section::UpNext => {
             hints.extend([
@@ -225,13 +227,22 @@ fn key_hints(app: &App) -> Line<'static> {
                 ("d", "remove"),
                 ("p", "play"),
                 ("C", "empty"),
-                ("1-6", "menu"),
+                ("1-7", "menu"),
+            ]);
+        }
+        Section::Downloads => {
+            hints.extend([
+                ("enter", "play"),
+                ("a", "to the end"),
+                ("A", "to the front"),
+                ("d", "delete"),
+                ("1-7", "menu"),
             ]);
         }
         Section::Settings => {
-            hints.extend([("↑↓", "select"), ("enter", "on/off"), ("←→", "change"), ("1-6", "menu"), ("q", "quit")])
+            hints.extend([("↑↓", "select"), ("enter", "on/off"), ("←→", "change"), ("1-7", "menu"), ("q", "quit")])
         }
-        Section::Help => hints.extend([("esc", "back"), ("1-6", "menu"), ("q", "quit")]),
+        Section::Help => hints.extend([("esc", "back"), ("1-7", "menu"), ("q", "quit")]),
     }
     // While something plays, the way to its keys closes every hint line.
     if app.playback.now.is_some() && !app.is_typing() {

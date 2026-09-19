@@ -8,8 +8,9 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
-    Category, Chapter, Command, Document, Episode, EpisodeRef, Event, NewEpisode, PlaybackState, Podcast, PodcastRef,
-    Problem, ProviderId, QueueItem, Settings, Subscription, Transport, merge, merge_chapters, notes,
+    Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode,
+    PlaybackState, Podcast, PodcastRef, Problem, ProviderId, QueueItem, Settings, Subscription, Transport, merge,
+    merge_chapters, notes,
 };
 
 use crate::i18n::Lang;
@@ -37,13 +38,21 @@ pub enum Section {
     Subscriptions,
     NewEpisodes,
     UpNext,
+    Downloads,
     Settings,
     Help,
 }
 
 impl Section {
-    pub const ALL: [Self; 6] =
-        [Self::Discover, Self::Subscriptions, Self::NewEpisodes, Self::UpNext, Self::Settings, Self::Help];
+    pub const ALL: [Self; 7] = [
+        Self::Discover,
+        Self::Subscriptions,
+        Self::NewEpisodes,
+        Self::UpNext,
+        Self::Downloads,
+        Self::Settings,
+        Self::Help,
+    ];
 
     #[must_use]
     pub fn title(self) -> &'static str {
@@ -52,6 +61,7 @@ impl Section {
             Self::Subscriptions => "Subscriptions",
             Self::NewEpisodes => "New Episodes",
             Self::UpNext => "Up Next",
+            Self::Downloads => "Downloads",
             Self::Settings => "Settings",
             Self::Help => "Help",
         }
@@ -249,6 +259,8 @@ pub struct App {
     pub providers: Vec<ProviderId>,
     pub subscriptions: Vec<Subscription>,
     pub subscriptions_index: usize,
+    pub downloads: Vec<Download>,
+    pub downloads_index: usize,
     pub new_episodes: Vec<NewEpisode>,
     pub new_index: usize,
     /// Feeds of the running refresh still to answer, and those that did not.
@@ -321,6 +333,8 @@ impl App {
             providers,
             subscriptions: Vec::new(),
             subscriptions_index: 0,
+            downloads: Vec::new(),
+            downloads_index: 0,
             new_episodes: Vec::new(),
             new_index: 0,
             refresh_pending: 0,
@@ -482,6 +496,10 @@ impl App {
                     self.settings_changed = true;
                 }
             }
+            Event::Downloads(downloads) => {
+                self.downloads_index = self.downloads_index.min(downloads.len().saturating_sub(1));
+                self.downloads = downloads;
+            }
             Event::Subscriptions(subscriptions) => {
                 self.subscriptions_index = self.subscriptions_index.min(subscriptions.len().saturating_sub(1));
                 self.subscriptions = subscriptions;
@@ -573,6 +591,9 @@ impl App {
     fn selected_item(&self) -> Option<QueueItem> {
         if self.section == Section::NewEpisodes {
             return self.new_episodes.get(self.new_index).map(|episode| episode.item.clone());
+        }
+        if self.section == Section::Downloads {
+            return self.downloads.get(self.downloads_index).map(|download| download.item.clone());
         }
         if self.section != Section::Discover {
             return None;
@@ -719,7 +740,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.section = Section::Help,
             // Inside an episode the digits belong to the links.
-            KeyCode::Char(digit @ '1'..='6') if !(self.section == Section::Discover && self.episode.is_some()) => {
+            KeyCode::Char(digit @ '1'..='7') if !(self.section == Section::Discover && self.episode.is_some()) => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
             }
             code => match self.section {
@@ -727,6 +748,7 @@ impl App {
                 Section::Subscriptions => self.on_subscriptions_key(code),
                 Section::NewEpisodes => self.on_new_episodes_key(code),
                 Section::UpNext => self.on_up_next_key(code),
+                Section::Downloads => self.on_downloads_key(code),
                 Section::Settings => self.on_settings_key(code),
                 Section::Help => {
                     if matches!(code, KeyCode::Esc | KeyCode::Backspace | KeyCode::Left) {
@@ -744,6 +766,13 @@ impl App {
                 self.player_open = !self.player_open;
                 self.player_chapter = self.playback.now.as_ref().and_then(|now| now.chapter_index()).unwrap_or(0);
             }
+            return true;
+        }
+        if code == KeyCode::Char('D')
+            && !self.player_open
+            && let Some(item) = self.selected_item()
+        {
+            self.commands.push(Command::Download(item));
             return true;
         }
         // Queueing works wherever an episode is selected.
@@ -789,7 +818,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => (self.section, self.player_open) = (Section::Help, false),
             // The menu stays one key away, as on every other screen.
-            KeyCode::Char(digit @ '1'..='6') => {
+            KeyCode::Char(digit @ '1'..='7') => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
                 self.player_open = false;
             }
@@ -857,6 +886,28 @@ impl App {
             (Lang::En, false) => format!("No longer subscribed to “{title}”."),
         });
         self.commands.push(Command::SetSubscribed { feed_url, title, guid: podcast.guid.clone(), subscribed });
+    }
+
+    /// Whether an episode is on this machine, on its way, or neither.
+    #[must_use]
+    pub fn download_state(&self, item_key: &str) -> Option<DownloadState> {
+        self.downloads.iter().find(|download| download.item.key() == item_key).map(|download| download.state)
+    }
+
+    fn on_downloads_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Enter => {
+                if let Some(item) = self.selected_item() {
+                    self.transport(Transport::PlayNow(item));
+                }
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                if let Some(download) = self.downloads.get(self.downloads_index) {
+                    self.commands.push(Command::DeleteDownload(download.item.library_id()));
+                }
+            }
+            code => move_selection(&mut self.downloads_index, self.downloads.len(), code),
+        }
     }
 
     fn on_up_next_key(&mut self, code: KeyCode) {
@@ -1236,6 +1287,7 @@ impl App {
             Section::Subscriptions => self.on_subscriptions_key(code),
             Section::NewEpisodes => self.on_new_episodes_key(code),
             Section::UpNext => self.on_up_next_key(code),
+            Section::Downloads => self.on_downloads_key(code),
             Section::Settings => self.on_settings_key(code),
             Section::Help => {}
         }
