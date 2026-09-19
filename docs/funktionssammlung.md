@@ -14,14 +14,15 @@ Ziel: Podcasts finden und alles über sie lesen können.
 
 | Funktion | Schicht | Anmerkung |
 |---|---|---|
-| Podcast-Suche nach Begriff | Core | über `DirectoryProvider`; Apple (ohne Key), Podcast Index (mit Key), fyyd |
+| Podcast-Suche nach Begriff | Core | über `DirectoryProvider`; Apple ist Hauptquelle und immer aktiv |
+| Weitere Quellen zuschalten | Core + UI | Podcast Index (eigener Key des Nutzers), fyyd; in den Einstellungen |
 | Ergebnisse mehrerer Verzeichnisse zusammenführen und de-duplizieren | Core | nach `podcast:guid`, iTunes-ID, normalisierter Feed-URL |
 | Ergebnisse treffen gestaffelt ein | Core + UI | ein langsames Verzeichnis blockiert nie |
 | Top-Charts nach Land | Core | Apple; Feed-URLs per Batch-Lookup |
-| Trending | Core | Podcast Index, nach Sprache filterbar |
+| Trending | Core | nur mit zugeschaltetem Podcast Index |
 | Kategorien durchblättern | Core | Apple-Genres als kanonische Taxonomie |
 | Feed-URL direkt öffnen | Core | unabhängig von allen Verzeichnissen |
-| Suche beim Tippen | UI | 300–500 ms Verzögerung, ab 3 Zeichen, laufende Anfragen abbrechen |
+| Suche beim Tippen | UI | 600 ms Verzögerung, ab 3 Zeichen, `enter` sofort; hält das Apple-Limit ein |
 | Herkunftsanzeige pro Treffer | UI | welches Verzeichnis den Treffer lieferte |
 
 ### Podcast-Detail
@@ -63,9 +64,9 @@ Ziel: Podcasts finden und alles über sie lesen können.
 
 | Funktion | Anmerkung |
 |---|---|
-| Spaltenkette Suche → Episoden → Detail/Kapitel | bewährtes Muster (podliner) |
+| Rahmen wie TorroMail: Markenleiste, Menü links, Panels, Tastenzeile | siehe [oberflaeche.md](oberflaeche.md) |
+| Hineingehen Suche → Podcast → Folge, `esc` zurück | Pfad im Panel-Titel |
 | Vim-Tasten (`j/k`, `gg/G`, `h/l`, `/`) und Pfeiltasten | |
-| Befehlszeile mit `:` | z. B. `:open <url>`, `:charts de` |
 | Tastenhilfe-Leiste unten, vollständige Hilfe mit `?` | |
 | Maus: Klicken, Scrollen | |
 | Farbschemata, passt sich dem Terminal an | |

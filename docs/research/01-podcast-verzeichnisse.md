@@ -3,7 +3,12 @@
 Stand: 19.09.2026. Alle Live-Tests liefen an diesem Tag per curl. Aufgezeichnete
 Antworten liegen unter [`fixtures/`](fixtures/) und eignen sich als Test-Vorlagen.
 
-## Empfehlung
+> **Entscheidung vom 19.09.2026:** Abweichend von der Empfehlung unten ist **Apple die
+> Hauptquelle**. Podcast Index und fyyd schaltet der Nutzer selbst dazu; für Podcast
+> Index trägt er seinen eigenen Key ein. TorroCast liefert keinen Key mit. Siehe
+> [architektur.md](../architektur.md).
+
+## Empfehlung der Recherche
 
 - **Primärquelle: Podcast Index.** Offen, gezielt für Podcast-Apps gebaut, liefert
   immer die Feed-URL und die `podcastGuid` und deckt Podcasting 2.0 ab. Trending und

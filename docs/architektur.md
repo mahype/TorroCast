@@ -84,19 +84,34 @@ Wiedergabe-Instanz) bleibt damit eine reine Ergänzung.
 
 Details in [research/01](research/01-podcast-verzeichnisse.md).
 
-| Rolle | Quelle | Key nötig |
+**Entschieden (19.09.2026):** Apple ist die Hauptquelle und ohne Einrichtung aktiv.
+Weitere Quellen schaltet der Nutzer in den Einstellungen dazu. TorroCast liefert
+**keinen** Podcast-Index-Key mit; wer Podcast Index nutzen will, trägt seinen eigenen
+kostenlosen Key ein. Damit entfällt die Frage, ob ein eingebetteter Key gegen die
+Nutzungsbedingungen verstößt.
+
+| Rolle | Quelle | Einrichtung |
 |---|---|---|
-| Primär | Podcast Index | ja (kostenlos) |
-| Sekundär | Apple iTunes Search + Charts | nein |
-| Optional | fyyd (deutschsprachig) | nein |
+| Hauptquelle, immer aktiv | Apple iTunes Search + Charts + Genres | keine |
+| Zuschaltbar | Podcast Index | eigener Key und Secret des Nutzers (im OS-Schlüsselbund) |
+| Zuschaltbar | fyyd (deutschsprachig) | keine, ein Schalter |
 | Immer | OPML-Import, Feed-URL direkt | – |
 
-Alle hinter einem `DirectoryProvider`-Trait. Ergebnisse werden parallel geholt,
-de-dupliziert (`podcast:guid` → iTunes-ID → normalisierte Feed-URL) und gestaffelt an
-die Oberfläche gereicht. Verzeichnisse dienen nur der Entdeckung; abonnierte Podcasts
-leben ausschließlich vom RSS-Feed.
+Alle hinter einem `DirectoryProvider`-Trait; neue Quellen sind damit eine Ergänzung,
+kein Umbau. Sind mehrere aktiv, werden Ergebnisse parallel geholt, de-dupliziert
+(`podcast:guid` → iTunes-ID → normalisierte Feed-URL) und gestaffelt an die Oberfläche
+gereicht. Verzeichnisse dienen nur der Entdeckung; abonnierte Podcasts leben
+ausschließlich vom RSS-Feed.
 
-Ohne Podcast-Index-Key funktioniert die App mit Apple und fyyd.
+Folgen von „Apple zuerst":
+
+- Apple erlaubt rund 20 Anfragen pro Minute. Die Suche startet deshalb nicht bei
+  jedem Tastendruck, sondern nach einer kurzen Pause, und Ergebnisse werden
+  zwischengespeichert.
+- Die Apple-Suche liefert weder Beschreibung noch Sprache. Beides kommt beim Öffnen
+  eines Podcasts aus dem Feed selbst.
+- Trending, Personen-Suche und der Hinweis „hat Kapitel/Transkript" schon in der
+  Trefferliste gibt es nur mit Podcast Index.
 
 ## Datenablage
 
@@ -110,6 +125,9 @@ Zwei getrennte Welten:
 | Format | binär, intern | JSON/JSONL, dokumentiert, versioniert |
 | Größe | MB bis GB | unter 1–2 MB |
 | Verlust | harmlos, rekonstruierbar | das eigentliche Nutzerdatum |
+
+**Entschieden (19.09.2026):** Der Ansatz „ein Unterverzeichnis pro Gerät" ist
+bestätigt.
 
 **Im Bibliotheks-Ordner liegt keine SQLite-Datei.** Eine Live-Datenbank in Dropbox,
 Syncthing oder iCloud wird laut SQLite-Dokumentation und Praxisberichten (Zotero)
@@ -142,7 +160,7 @@ Ein Spike zu Beginn von v0.2 klärt die offenen Punkte (siehe research/03, Absch
 
 | # | Frage | Empfehlung |
 |---|---|---|
-| 1 | Podcast-Index-Key: Die Nutzungsbedingungen verbieten eingebettete Keys in Open-Source-Projekten, AntennaPod und Kasts tun es trotzdem. | Eigenen Key registrieren, bei Podcast Index per Mail nachfragen, Key zur Build-Zeit einspeisen, Überschreibung per Konfiguration. |
+| 1 | ~~Podcast-Index-Key~~ | **Entschieden:** kein Key im Projekt, der Nutzer trägt seinen eigenen ein. |
 | 2 | Wiedergabe: eigene Rust-Pipeline oder mpv? | Eigene Pipeline, mpv optional. Entscheidung nach Spike. |
 | 3 | Widersprüchliche Positionen zweier Geräte: jüngste gewinnt oder weiteste gewinnt? | Jüngste gewinnt; die App bietet den Sprung zur weiteren Position an. |
 | 4 | OPML-Export im Bibliotheks-Ordner: pro Gerät oder eine gemeinsame Datei? | Pro Gerät (konfliktfrei). |

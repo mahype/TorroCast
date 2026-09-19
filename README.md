@@ -7,7 +7,7 @@ There is no code yet.
 
 ## Idea
 
-- Search podcasts across open directories (Podcast Index, Apple, fyyd), browse
+- Search podcasts (Apple by default; Podcast Index and fyyd can be added), browse
   podcast details, episodes, show notes and chapter marks.
 - A modern TUI that runs on Linux, macOS and Windows.
 - All logic lives in a platform-independent Rust core, so native front ends
@@ -24,6 +24,7 @@ The planning documents are written in German.
 |---|---|
 | [docs/architektur.md](docs/architektur.md) | Architecture summary, decisions, open questions |
 | [docs/funktionssammlung.md](docs/funktionssammlung.md) | Feature list by release (v0.1, v0.2, later) |
+| [docs/oberflaeche.md](docs/oberflaeche.md) | TUI concept with mockups, following the TorroMail TUI and the Torro design language |
 | [docs/research/01-podcast-verzeichnisse.md](docs/research/01-podcast-verzeichnisse.md) | Where podcast catalog data comes from: APIs, terms, limits |
 | [docs/research/02-clients-und-funktionsumfang.md](docs/research/02-clients-und-funktionsumfang.md) | Survey of existing clients, chapter formats, sync standards |
 | [docs/research/03-technik-rust-oder-go.md](docs/research/03-technik-rust-oder-go.md) | Rust vs. Go, TUI frameworks, cross-platform, audio, FFI |
