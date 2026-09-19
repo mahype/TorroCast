@@ -13,6 +13,7 @@ Arbeitsliste. Erledigtes wird abgehakt und bleibt stehen, damit der Weg nachvoll
 - [ ] Medientasten unter macOS (braucht einen Run-Loop auf dem Main-Thread) und Windows (braucht ein verstecktes Fenster)
 - [x] Mehrere Playlists: anlegen (`N`), Folgen von überall hineinlegen (`L`), ganz in „Als Nächstes“ legen (`a`/`A`), löschen – im Bibliotheks-Ordner gespeichert und damit geräteübergreifend
 - [ ] Playlists: umbenennen, umsortieren; Playlists nach Regeln (Smart Playlists)
-- [ ] Bibliotheks-Ordner: verdichtete Schnappschüsse, alte Journale entfernen
+- [x] Bibliotheks-Ordner: verdichtete Schnappschüsse – ab 128 KiB faltet ein Gerät beim Start seine Journale zu einem Schnappschuss
+- [ ] Bibliotheks-Ordner: Ordner beobachten statt alle 30 s nachsehen; kopierte Geräte-Kennung erkennen; Einstellungen und Favoriten im Ordner
 - [ ] Opus und HE-AAC
 - [ ] Maus: Klicks in Listen; verschachtelte Listen in Shownotes

@@ -148,3 +148,70 @@ fn a_library_from_the_future_is_left_alone() {
     assert!(matches!(Folder::open(&root, "laptop", "Laptop", 1_000), Err(OpenError::NotALibrary)));
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn a_long_journal_is_folded_into_a_snapshot_that_says_the_same() {
+    let root = scratch("snapshot");
+    let mut laptop = Folder::open(&root, "laptop", "Laptop", 1_000).expect("opens");
+    laptop.record(subscribed("Alpha"), 2_000).expect("writable");
+    laptop.record(subscribed("Gone"), 2_100).expect("writable");
+    laptop.record(Change::Unsubscribed { podcast: "gone".into() }, 2_200).expect("writable");
+    // Many hours of listening: one line a minute, all about the same two episodes.
+    for minute in 0..3_000u64 {
+        let episode = if minute % 2 == 0 { "e-even" } else { "e-odd" };
+        let change = Change::PlaybackUpdated {
+            episode: episode.into(),
+            position_ms: minute * 60_000,
+            duration_ms: None,
+            played: false,
+        };
+        laptop.record(change, 10_000 + minute).expect("writable");
+    }
+    // Another device has the last word on one of the episodes.
+    let mut desktop = Folder::open(&root, "desktop", "Desktop", 900_000).expect("opens");
+    desktop
+        .record(
+            Change::PlaybackUpdated { episode: "e-odd".into(), position_ms: 42, duration_ms: None, played: true },
+            900_001,
+        )
+        .expect("writable");
+    drop((laptop, desktop));
+    let before: u64 = fs::read_dir(root.join("devices/laptop"))
+        .expect("exists")
+        .filter_map(Result::ok)
+        .map(|entry| entry.metadata().expect("readable").len())
+        .sum();
+
+    // The next start folds the laptop's journals.
+    let laptop = Folder::open(&root, "laptop", "Laptop", 1_000_000).expect("reopens and compacts");
+    let mut names: Vec<String> = fs::read_dir(root.join("devices/laptop"))
+        .expect("exists")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert!(
+        names.iter().any(|name| name.starts_with("snapshot-")) && names.len() == 2,
+        "one snapshot, one fresh journal: {names:?}"
+    );
+    let after: u64 = fs::read_dir(root.join("devices/laptop"))
+        .expect("exists")
+        .filter_map(Result::ok)
+        .map(|entry| entry.metadata().expect("readable").len())
+        .sum();
+    assert!(after * 50 < before, "thousands of lines became a handful: {before} → {after} bytes");
+
+    // Anyone reading the folder afresh finds the same library as before.
+    let reader = Folder::open(&root, "phone", "Phone", 2_000_000).expect("opens");
+    for folder in [&laptop, &reader] {
+        assert_eq!(titles(folder), vec!["Alpha"], "the unsubscription is kept, or the show would come back");
+        assert_eq!(folder.state().progress("e-even").map(|progress| progress.position_ms), Some(2_998 * 60_000));
+        assert_eq!(
+            folder.state().progress("e-odd").map(|progress| progress.played),
+            Some(true),
+            "the desktop's later word stands"
+        );
+    }
+    assert!(root.join("devices/desktop/journal-000001.jsonl").exists(), "another device's files are never touched");
+    let _ = fs::remove_dir_all(root);
+}

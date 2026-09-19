@@ -133,6 +133,50 @@ impl State {
         }
     }
 
+    /// Everything `device` has written that still counts — its last word on
+    /// every fact it was the last to speak about — as changes, oldest first.
+    /// A journal holding exactly these says the same as the journal they came from.
+    #[must_use]
+    pub fn last_words_of(&self, device: &str) -> Vec<(Hlc, Change)> {
+        let mut changes: Vec<(Hlc, Change)> = Vec::new();
+        let own = |hlc: &Hlc| hlc.device == device;
+        for (podcast, register) in self.subscriptions.iter().filter(|(_, register)| own(&register.hlc)) {
+            let change = match &register.value {
+                Some(subscription) => Change::Subscribed {
+                    podcast: podcast.clone(),
+                    feed_url: subscription.feed_url.clone(),
+                    title: subscription.title.clone(),
+                },
+                None => Change::Unsubscribed { podcast: podcast.clone() },
+            };
+            changes.push((register.hlc.clone(), change));
+        }
+        for (episode, register) in self.progress.iter().filter(|(_, register)| own(&register.hlc)) {
+            let Progress { position_ms, duration_ms, played } = register.value;
+            changes.push((
+                register.hlc.clone(),
+                Change::PlaybackUpdated { episode: episode.clone(), position_ms, duration_ms, played },
+            ));
+        }
+        for ((playlist, episode), register) in self.queue.iter().filter(|(_, register)| own(&register.hlc)) {
+            let (playlist, episode) = (playlist.clone(), episode.clone());
+            let change = match &register.value {
+                Some((sort, item)) => Change::QueueItemSet { playlist, episode, sort: *sort, item: item.clone() },
+                None => Change::QueueItemRemoved { playlist, episode },
+            };
+            changes.push((register.hlc.clone(), change));
+        }
+        for (playlist, register) in self.playlists.iter().filter(|(_, register)| own(&register.hlc)) {
+            let change = match &register.value {
+                Some(name) => Change::PlaylistSet { playlist: playlist.clone(), name: name.clone() },
+                None => Change::PlaylistRemoved { playlist: playlist.clone() },
+            };
+            changes.push((register.hlc.clone(), change));
+        }
+        changes.sort_by(|left, right| left.0.cmp(&right.0));
+        changes
+    }
+
     /// Alphabetical, as a person would look for a show.
     #[must_use]
     pub fn subscriptions(&self) -> Vec<Subscription> {

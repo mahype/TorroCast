@@ -24,6 +24,8 @@ const FORMAT_VERSION: u32 = 1;
 /// A journal is closed and a new one begun at this size, so a sync service
 /// never has to move more than this for one more line.
 const SEGMENT_BYTES: u64 = 256 * 1024;
+/// When this device's journals have grown to this, they are folded into a snapshot at the next start.
+const COMPACT_FROM_BYTES: u64 = 128 * 1024;
 
 #[derive(Serialize, Deserialize)]
 struct Format {
@@ -81,6 +83,9 @@ pub struct Folder {
     /// How far each journal has been read. Journals only grow.
     read_to: HashMap<PathBuf, u64>,
     read_only: bool,
+    /// This device's files hold something a newer version wrote. Folding them would lose it.
+    own_unknown: bool,
+    device_name: String,
 }
 
 fn journal_name(segment: u32) -> String {
@@ -144,11 +149,16 @@ impl Folder {
             state: State::default(),
             read_to: HashMap::new(),
             read_only,
+            own_unknown: false,
+            device_name: device_name.to_owned(),
         };
         folder.rescan(now_ms)?;
         if first_visit {
             let app = concat!("torrocast ", env!("CARGO_PKG_VERSION")).to_owned();
             folder.record(Change::DeviceRegistered { name: device_name.to_owned(), app }, now_ms)?;
+        }
+        if folder.own_bytes() >= COMPACT_FROM_BYTES {
+            folder.compact(now_ms)?;
         }
         Ok(folder)
     }
@@ -193,6 +203,54 @@ impl Folder {
         Ok(())
     }
 
+    fn own_files(&self) -> Vec<PathBuf> {
+        let files = fs::read_dir(self.own_directory()).into_iter().flatten().filter_map(Result::ok);
+        files.map(|entry| entry.path()).filter(|path| is_journal(path)).collect()
+    }
+
+    fn own_bytes(&self) -> u64 {
+        self.own_files().iter().filter_map(|path| fs::metadata(path).ok()).map(|metadata| metadata.len()).sum()
+    }
+
+    /// Folds this device's journals into one snapshot: for every fact this
+    /// device was the last to speak about, its last word — with the time it was
+    /// spoken. An hour of listening is sixty lines about one position; the
+    /// snapshot keeps the last.
+    ///
+    /// Only this device's own files are ever touched. The snapshot is complete
+    /// and in place before anything old is deleted, so a crash at any moment
+    /// leaves the same library, only said twice.
+    pub fn compact(&mut self, now_ms: u64) -> io::Result<()> {
+        if self.read_only || self.own_unknown {
+            return Ok(());
+        }
+        let old = self.own_files();
+        let mut text = Vec::new();
+        let app = concat!("torrocast ", env!("CARGO_PKG_VERSION")).to_owned();
+        let registered = (self.clock.tick(now_ms), Change::DeviceRegistered { name: self.device_name.clone(), app });
+        for (hlc, change) in self.state.last_words_of(&self.device).into_iter().chain(std::iter::once(registered)) {
+            self.sequence += 1;
+            let line = Line { v: 1, id: format!("{}:{}", self.device, self.sequence), hlc: hlc.to_string(), change };
+            text.extend(serde_json::to_vec(&line).map_err(io::Error::other)?);
+            text.push(b'\n');
+        }
+        let snapshot = self.own_directory().join(format!("snapshot-{:06}.jsonl", self.segment));
+        let temporary = snapshot.with_extension("tmp");
+        fs::write(&temporary, &text)?;
+        File::open(&temporary)?.sync_all()?;
+        fs::rename(&temporary, &snapshot)?;
+
+        self.segment += 1;
+        self.journal =
+            OpenOptions::new().create(true).append(true).open(self.own_directory().join(journal_name(self.segment)))?;
+        for path in old.iter().filter(|path| **path != snapshot) {
+            fs::remove_file(path)?;
+            self.read_to.remove(path);
+        }
+        self.read_to.insert(snapshot, text.len() as u64);
+        Ok(())
+    }
+
     fn own_directory(&self) -> PathBuf {
         self.root.join("devices").join(&self.device)
     }
@@ -230,6 +288,9 @@ impl Folder {
             for text in added[..complete].split(|byte| *byte == b'\n').filter(|text| !text.is_empty()) {
                 // A damaged line is skipped; it never stops the rest from being read.
                 let Ok(line) = serde_json::from_slice::<Line>(text) else { continue };
+                if line.change == Change::Unknown && path.starts_with(self.own_directory()) {
+                    self.own_unknown = true;
+                }
                 let Ok(hlc) = line.hlc.parse::<Hlc>() else { continue };
                 if let Some(sequence) =
                     line.id.strip_prefix(&format!("{}:", self.device)).and_then(|sequence| sequence.parse::<u64>().ok())

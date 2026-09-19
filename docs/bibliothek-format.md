@@ -81,10 +81,26 @@ Zeilenende gilt als noch unterwegs, eine beschädigte Zeile wird übersprungen.
 
 Andere Geräte werden alle 30 Sekunden eingelesen.
 
+## Schnappschüsse
+
+Eine Stunde Hören sind sechzig Zeilen über eine einzige Position. Sind die Journale
+eines Geräts auf 128 KiB gewachsen, faltet es sie beim nächsten Start zusammen: Für jede
+Tatsache, zu der dieses Gerät das letzte Wort hatte, bleibt genau diese letzte Zeile –
+mit ihrem ursprünglichen Zeitstempel – in `snapshot-NNNNNN.jsonl`. Danach beginnt ein
+neues Journal.
+
+- Ein Schnappschuss ist selbst ein Journal und wird gelesen wie jedes andere; ältere
+  Versionen verstehen ihn ohne Weiteres.
+- Abbestellungen und Entfernungen bleiben erhalten. Ohne sie käme Gelöschtes zurück,
+  sobald ein altes Gerät wieder auftaucht.
+- Ein Gerät fasst nur seine eigenen Dateien an. Erst wenn der Schnappschuss vollständig
+  an seinem Platz liegt, werden die alten Journale gelöscht; ein Absturz dazwischen
+  hinterlässt dieselbe Bibliothek, nur doppelt gesagt.
+- Enthalten die eigenen Dateien Zeilen einer neueren Version, wird nicht gefaltet – sie
+  gingen sonst verloren.
+
 ## Noch nicht umgesetzt
 
-- Verdichtete Schnappschüsse und das Löschen alter Journale. Eine Stunde Hören sind
-  etwa 60 Zeilen; das wird erst nach langer Zeit relevant.
 - Beobachten des Ordners statt Nachsehen im Takt.
 - Erkennen einer kopierten Geräte-Kennung (geklontes Home-Verzeichnis).
 - Einstellungen und Favoriten im Ordner.
