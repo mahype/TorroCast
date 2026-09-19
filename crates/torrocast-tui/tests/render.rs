@@ -976,3 +976,29 @@ fn lists_show_the_cover_before_each_episode() {
         "titles line up whether or not there is a picture"
     );
 }
+
+#[test]
+fn a_search_result_says_when_it_is_subscribed_already() {
+    let mut app = app();
+    // The library knows the feed under another spelling than the directory.
+    app.on_event(Event::Subscriptions(vec![Subscription {
+        podcast: "917393e3".into(),
+        feed_url: "http://www.beispiel.example/feed.xml/".into(),
+        title: "Beispielsendung".into(),
+    }]));
+    searched(
+        &mut app,
+        vec![
+            show("Beispielsendung", Some("https://beispiel.example/feed.xml")),
+            show("Andere Sendung", Some("https://andere.example/feed.xml")),
+        ],
+    );
+    // Narrow: the list alone. One mark, on the row of the subscribed show.
+    let text = screen(&app, 84, 28);
+    let marked: Vec<&str> = text.lines().filter(|line| line.contains("✓ Abonniert")).collect();
+    assert_eq!(marked.len(), 1, "{text}");
+    assert!(marked[0].contains("Beispielsendung"));
+    // Wide: the preview of the selected show says it as well.
+    let text = screen(&app, 140, 30);
+    assert_eq!(text.matches("✓ Abonniert").count(), 2, "{text}");
+}

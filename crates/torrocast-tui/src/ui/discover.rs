@@ -279,14 +279,23 @@ fn draw_shows(
         let mut meta: Vec<&str> = show.author.as_deref().into_iter().collect();
         meta.extend(show.genres.first().map(String::as_str));
         let meta = meta.join(" · ");
+        // A show the user already follows says so, at the right edge of its title.
+        let subscribed = show.feed_url.as_deref().is_some_and(|feed_url| app.is_subscribed(feed_url));
+        let mark = if subscribed { format!(" ✓ {} ", app.lang.t("Subscribed")) } else { String::new() };
+        let title_width = width.saturating_sub(mark.chars().count());
+        let background = if index == selected { Style::new().bg(theme::SELECTION) } else { Style::new() };
+        let mark = Span::styled(mark, background.fg(theme::GREEN));
         if index == selected {
-            lines.push(Line::styled(fit(&format!(" {}", show.title), width), theme::selected()));
+            lines.push(Line::from(vec![
+                Span::styled(fit(&format!(" {}", show.title), title_width), theme::selected()),
+                mark,
+            ]));
             lines.push(Line::styled(
                 fit(&format!(" {meta}"), width),
                 Style::new().bg(theme::SELECTION).fg(theme::MUTED),
             ));
         } else {
-            lines.push(Line::raw(fit(&format!(" {}", show.title), width)));
+            lines.push(Line::from(vec![Span::raw(fit(&format!(" {}", show.title), title_width)), mark]));
             lines.push(Line::styled(fit(&format!(" {meta}"), width), theme::muted()));
         }
         lines.push(Line::default());
@@ -310,6 +319,9 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App, show: &PodcastRef)
         wrap(&show.title, width).into_iter().map(|row| Line::styled(row, theme::bold())).collect();
     if let Some(author) = &show.author {
         lines.extend(wrap(author, width).into_iter().map(|row| Line::styled(row, theme::muted())));
+    }
+    if show.feed_url.as_deref().is_some_and(|feed_url| app.is_subscribed(feed_url)) {
+        lines.push(Line::styled(format!("✓ {}", lang.t("Subscribed")), Style::new().fg(theme::GREEN)));
     }
     lines.push(Line::default());
     if !show.genres.is_empty() {

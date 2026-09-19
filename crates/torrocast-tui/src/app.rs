@@ -12,7 +12,7 @@ use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
     Category, Chapter, Command, Document, Download, DownloadState, Episode, EpisodeRef, Event, NewEpisode, OpmlOutcome,
     PlaybackState, Playlist, PlaylistCommand, Podcast, PodcastRef, Problem, Progress, ProviderId, QueueItem, Settings,
-    Subscription, Transport, merge, merge_chapters, notes,
+    Subscription, Transport, merge, merge_chapters, normalise_feed_url, notes,
 };
 
 use crate::covers::Covers;
@@ -1029,7 +1029,9 @@ impl App {
     /// Whether the podcast on screen is one the user follows.
     #[must_use]
     pub fn is_subscribed(&self, feed_url: &str) -> bool {
-        self.subscriptions.iter().any(|subscription| subscription.feed_url == feed_url)
+        // Directories spell one address in several ways: with http or https, with or without a closing slash.
+        let wanted = normalise_feed_url(feed_url);
+        self.subscriptions.iter().any(|subscription| normalise_feed_url(&subscription.feed_url) == wanted)
     }
 
     fn toggle_subscription(&mut self) {

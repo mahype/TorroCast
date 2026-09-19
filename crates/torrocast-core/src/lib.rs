@@ -31,7 +31,7 @@ pub use fresh::NewEpisode;
 pub use keeper::Playlist;
 pub use playback::{NowPlaying, QueueItem, Sleep, Status};
 pub use settings::Settings;
-pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merge};
+pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merge, normalise_feed_url};
 pub use torrocast_feed::chapters::merge as merge_chapters;
 pub use torrocast_feed::notes::{self, Block, Document, Inline};
 pub use torrocast_feed::{Chapter, ChapterSource, Episode, Podcast};
