@@ -3,6 +3,7 @@
 
 mod discover;
 mod episode;
+mod fresh;
 mod help;
 mod player;
 mod podcast;
@@ -54,6 +55,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
             (None, None) => discover::draw(frame, content, app),
         },
         Section::Subscriptions => subscriptions::draw(frame, content, app),
+        Section::NewEpisodes => fresh::draw(frame, content, app),
         Section::UpNext => upnext::draw(frame, content, app),
         Section::Settings => settings::draw(frame, content, app),
         Section::Help => help::draw(frame, content, app),
@@ -121,8 +123,12 @@ fn draw_menu(frame: &mut Frame<'_>, area: Rect, app: &App) {
     for (index, section) in Section::ALL.iter().enumerate() {
         let title = app.lang.t(section.title());
         // What waits in Up Next is counted at its menu entry.
-        let waiting = app.playback.up_next.len();
-        let badge = if *section == Section::UpNext && waiting > 0 { format!(" {waiting} ") } else { String::new() };
+        let waiting = match section {
+            Section::UpNext => app.playback.up_next.len(),
+            Section::NewEpisodes => app.new_episodes.len(),
+            _ => 0,
+        };
+        let badge = if waiting > 0 { format!(" {waiting} ") } else { String::new() };
         let room = width.saturating_sub(badge.chars().count() + usize::from(!badge.is_empty()));
         let chosen = *section == app.section && !app.player_open;
         let on_red = Style::new().bg(theme::RED).fg(Color::White).add_modifier(Modifier::BOLD);
@@ -198,10 +204,20 @@ fn key_hints(app: &App) -> Line<'static> {
                 if app.tab == Tab::Charts && app.charts.category.is_some() {
                     hints.push(("esc", "all charts"));
                 }
-                hints.extend([("1-5", "menu"), ("q", "quit")]);
+                hints.extend([("1-6", "menu"), ("q", "quit")]);
             }
         },
-        Section::Subscriptions => hints.extend([("↑↓", "select"), ("enter", "open"), ("1-5", "menu"), ("q", "quit")]),
+        Section::Subscriptions => hints.extend([("↑↓", "select"), ("enter", "open"), ("1-6", "menu"), ("q", "quit")]),
+        Section::NewEpisodes => {
+            hints.extend([
+                ("enter", "open"),
+                ("p", "play"),
+                ("a", "to the end"),
+                ("A", "to the front"),
+                ("r", "reload"),
+            ]);
+            hints.push(("1-6", "menu"));
+        }
         Section::UpNext => {
             hints.extend([
                 ("↑↓", "select"),
@@ -209,13 +225,13 @@ fn key_hints(app: &App) -> Line<'static> {
                 ("d", "remove"),
                 ("p", "play"),
                 ("C", "empty"),
-                ("1-5", "menu"),
+                ("1-6", "menu"),
             ]);
         }
         Section::Settings => {
-            hints.extend([("↑↓", "select"), ("enter", "on/off"), ("←→", "change"), ("1-5", "menu"), ("q", "quit")])
+            hints.extend([("↑↓", "select"), ("enter", "on/off"), ("←→", "change"), ("1-6", "menu"), ("q", "quit")])
         }
-        Section::Help => hints.extend([("esc", "back"), ("1-5", "menu"), ("q", "quit")]),
+        Section::Help => hints.extend([("esc", "back"), ("1-6", "menu"), ("q", "quit")]),
     }
     // While something plays, the way to its keys closes every hint line.
     if app.playback.now.is_some() && !app.is_typing() {

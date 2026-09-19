@@ -14,6 +14,8 @@ use torrocast_tui::i18n::Lang;
 use torrocast_tui::ui;
 
 /// Short enough that an answer from the core shows up without a key press.
+/// How often the subscribed feeds are fetched again while the program runs.
+const REFRESH_EVERY: Duration = Duration::from_secs(30 * 60);
 const POLL: Duration = Duration::from_millis(50);
 
 fn main() -> std::io::Result<()> {
@@ -64,10 +66,13 @@ fn main() -> std::io::Result<()> {
     let (mut core, events) = Core::new(Arc::new(HttpClient::new()), settings.clone(), output, keeper.ok());
     let mut app = App::new(Lang::from_locale(&locale), settings);
     app.library = library;
+    // The first look at what the subscriptions have published.
+    core.send(torrocast_core::Command::RefreshSubscriptions);
 
     let mut terminal = ratatui::init();
     // The mouse is a convenience; a terminal that refuses it still works.
     let _ = execute!(stdout(), EnableMouseCapture);
+    let mut refreshed = Instant::now();
     let mut shown = app.screen();
     let outcome = loop {
         // Terminals disagree with us about the width of some emoji, and what
@@ -95,6 +100,10 @@ fn main() -> std::io::Result<()> {
             Err(error) => break Err(error),
         }
         app.tick(Instant::now());
+        if refreshed.elapsed() >= REFRESH_EVERY {
+            refreshed = Instant::now();
+            core.send(torrocast_core::Command::RefreshSubscriptions);
+        }
         core.pump();
         while let Ok(event) = events.try_recv() {
             app.on_event(event);

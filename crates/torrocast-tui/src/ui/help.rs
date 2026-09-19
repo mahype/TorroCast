@@ -22,7 +22,7 @@ const LEFT: &[Group] = &[
             ("esc  ←  h", "one level back"),
             ("tab", "switch tab or panel"),
             ("/", "search, or filter a list"),
-            ("1 … 5", "menu (in an episode the digits open links)"),
+            ("1 … 6", "menu (in an episode the digits open links)"),
             ("r", "reload"),
             ("q  ctrl+c", "quit"),
         ],

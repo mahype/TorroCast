@@ -102,6 +102,19 @@ const GERMAN: &[(&str, &str)] = &[
     ("Width", "Breite"),
     ("Height", "Höhe"),
     ("Make the window larger — TorroCast keeps running.", "Zieh das Fenster größer – TorroCast läuft weiter."),
+    // new episodes
+    ("New Episodes", "Neue Folgen"),
+    ("still loading feeds", "Feeds laden noch"),
+    ("feeds did not answer", "Feeds haben nicht geantwortet"),
+    ("Looking through your subscriptions …", "Sehe deine Abos durch …"),
+    (
+        "Nothing new in the last two weeks. r looks again.",
+        "Nichts Neues in den letzten zwei Wochen. r sieht noch einmal nach.",
+    ),
+    (
+        "New episodes of your subscriptions appear here. Subscribe to a podcast with s first.",
+        "Hier erscheinen neue Folgen deiner Abos. Abonniere zuerst einen Podcast mit s.",
+    ),
     // subscriptions and library
     ("Subscriptions", "Abos"),
     ("Subscribed", "Abonniert"),

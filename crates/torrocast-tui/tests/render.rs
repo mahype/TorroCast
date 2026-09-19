@@ -7,8 +7,8 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use torrocast_core::{
-    Chapter, ChapterSource, Command, EpisodeRef, Event, NowPlaying, PlaybackState, PodcastRef, Problem, ProviderId,
-    QueueItem, Settings, Status, Subscription, Transport,
+    Chapter, ChapterSource, Command, EpisodeRef, Event, NewEpisode, NowPlaying, PlaybackState, PodcastRef, Problem,
+    ProviderId, QueueItem, Settings, Status, Subscription, Transport,
 };
 use torrocast_tui::app::{App, SEARCH_DELAY, Section};
 use torrocast_tui::i18n::Lang;
@@ -220,7 +220,7 @@ fn escape_walks_back_one_level_at_a_time() {
 fn sources_are_switched_in_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('4'));
+    press(&mut app, KeyCode::Char('5'));
     assert!(screen(&app, 104, 28).contains("Ausgeschaltet"));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
@@ -316,7 +316,7 @@ fn the_player_sits_under_the_menu_on_every_screen() {
     assert!(!screen(&app, 104, 32).contains("Läuft gerade"), "nothing plays, nothing shown");
     app.terminal_height = 32;
     playing(&mut app, &["Eins", "Zwei"]);
-    for key in ['1', '2', '3', '4', '5'] {
+    for key in ['1', '2', '3', '4', '5', '6'] {
         press(&mut app, KeyCode::Char(key));
         let text = screen(&app, 104, 32);
         assert!(text.contains("0  Läuft gerade"), "missing on screen {key}");
@@ -377,7 +377,7 @@ fn the_playback_keys_work_everywhere_but_not_while_typing() {
 fn without_playback_the_space_bar_still_serves_the_settings() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('4'));
+    press(&mut app, KeyCode::Char('5'));
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Char(' '));
@@ -390,7 +390,7 @@ fn up_next_is_reordered_and_emptied_with_care() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
     playing(&mut app, &["Eins", "Zwei", "Drei"]);
-    press(&mut app, KeyCode::Char('3'));
+    press(&mut app, KeyCode::Char('4'));
     let text = screen(&app, 104, 32);
     assert!(text.contains("Als Nächstes · 3 Folgen · 3:00:00"));
     assert!(text.contains("Danach geht es ohne Pause mit Platz 1 weiter."));
@@ -540,11 +540,56 @@ fn subscriptions_open_their_podcast_and_escape_leads_back() {
 fn the_settings_say_where_the_library_lives() {
     let mut app = app();
     press(&mut app, KeyCode::Esc);
-    press(&mut app, KeyCode::Char('4'));
+    press(&mut app, KeyCode::Char('5'));
     app.library = Ok("/home/ada/Dropbox/torrocast".into());
     let text = screen(&app, 104, 30);
     assert!(text.contains("Bibliotheks-Ordner"));
     assert!(text.contains("/home/ada/Dropbox/torrocast"));
     app.library = Err("the library was written by a newer version".into());
     assert!(screen(&app, 104, 30).contains("Die Bibliothek ließ sich nicht öffnen"));
+}
+
+// ── new episodes ─────────────────────────────────────────────────────────────
+
+fn new_episode(title: &str) -> NewEpisode {
+    let published =
+        chrono::DateTime::parse_from_rfc3339("2026-09-18T06:00:00Z").expect("a date").with_timezone(&chrono::Utc);
+    NewEpisode { item: item(title), published }
+}
+
+#[test]
+fn new_episodes_are_listed_counted_and_queued() {
+    let mut app = app();
+    press(&mut app, KeyCode::Esc);
+    press(&mut app, KeyCode::Char('3'));
+    assert!(screen(&app, 104, 28).contains("Hier erscheinen neue Folgen deiner Abos."));
+
+    app.on_event(Event::NewEpisodes {
+        episodes: vec![new_episode("Eins"), new_episode("Zwei")],
+        pending: 3,
+        failed: 0,
+    });
+    let text = screen(&app, 104, 28);
+    assert!(text.contains("Neue Folgen · 2 · 3 Feeds laden noch"));
+    assert!(text.contains("Beispielsendung · 18.09.2026 · 1:00:00"));
+    let menu_row = text.lines().find(|line| line.contains("3  Neue Folgen")).expect("the menu entry");
+    assert!(menu_row.contains(" 2 "), "counted at the menu entry: {menu_row}");
+
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Char('A'));
+    assert!(
+        matches!(transports(&mut app).as_slice(), [Transport::Enqueue { item, first: true }] if item.title == "Zwei")
+    );
+    press(&mut app, KeyCode::Char('r'));
+    assert_eq!(app.commands.pop(), Some(Command::RefreshSubscriptions));
+
+    // Enter leads to the episode itself, by way of its podcast.
+    press(&mut app, KeyCode::Enter);
+    assert!(matches!(app.commands.pop(), Some(Command::OpenFeed { .. })));
+    assert_eq!(app.section, Section::Discover);
+
+    app.on_event(Event::NewEpisodes { episodes: Vec::new(), pending: 0, failed: 2 });
+    press(&mut app, KeyCode::Esc);
+    assert_eq!(app.section, Section::NewEpisodes);
+    assert!(screen(&app, 104, 28).contains("2 Feeds haben nicht geantwortet"));
 }

@@ -103,6 +103,12 @@ impl Keeper {
         let _ = self.folder.record(change, now_ms());
     }
 
+    /// Heard to the end, on this device or any other.
+    #[must_use]
+    pub fn is_played(&self, item: &QueueItem) -> bool {
+        self.folder.state().progress(&item.library_id()).is_some_and(|progress| progress.played)
+    }
+
     #[must_use]
     pub fn is_subscribed(&self, podcast: &str) -> bool {
         self.folder.state().is_subscribed(podcast)

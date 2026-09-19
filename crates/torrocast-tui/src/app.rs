@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use torrocast_core::settings::COUNTRIES;
 use torrocast_core::{
-    Category, Chapter, Command, Document, Episode, EpisodeRef, Event, PlaybackState, Podcast, PodcastRef, Problem,
-    ProviderId, QueueItem, Settings, Subscription, Transport, merge, merge_chapters, notes,
+    Category, Chapter, Command, Document, Episode, EpisodeRef, Event, NewEpisode, PlaybackState, Podcast, PodcastRef,
+    Problem, ProviderId, QueueItem, Settings, Subscription, Transport, merge, merge_chapters, notes,
 };
 
 use crate::i18n::Lang;
@@ -35,19 +35,22 @@ const SEEK_FORWARD_MS: i64 = 30_000;
 pub enum Section {
     Discover,
     Subscriptions,
+    NewEpisodes,
     UpNext,
     Settings,
     Help,
 }
 
 impl Section {
-    pub const ALL: [Self; 5] = [Self::Discover, Self::Subscriptions, Self::UpNext, Self::Settings, Self::Help];
+    pub const ALL: [Self; 6] =
+        [Self::Discover, Self::Subscriptions, Self::NewEpisodes, Self::UpNext, Self::Settings, Self::Help];
 
     #[must_use]
     pub fn title(self) -> &'static str {
         match self {
             Self::Discover => "Discover",
             Self::Subscriptions => "Subscriptions",
+            Self::NewEpisodes => "New Episodes",
             Self::UpNext => "Up Next",
             Self::Settings => "Settings",
             Self::Help => "Help",
@@ -228,6 +231,11 @@ pub struct App {
     pub providers: Vec<ProviderId>,
     pub subscriptions: Vec<Subscription>,
     pub subscriptions_index: usize,
+    pub new_episodes: Vec<NewEpisode>,
+    pub new_index: usize,
+    /// Feeds of the running refresh still to answer, and those that did not.
+    pub refresh_pending: usize,
+    pub refresh_failed: usize,
     /// Where the library lives, or why there is none. Told by the main loop.
     pub library: Result<String, String>,
     pub playback: PlaybackState,
@@ -287,6 +295,10 @@ impl App {
             providers,
             subscriptions: Vec::new(),
             subscriptions_index: 0,
+            new_episodes: Vec::new(),
+            new_index: 0,
+            refresh_pending: 0,
+            refresh_failed: 0,
             library: Err(String::new()),
             playback: PlaybackState { speed: 1.0, ..PlaybackState::default() },
             levels: VecDeque::new(),
@@ -423,6 +435,11 @@ impl App {
                 self.up_next_index = self.up_next_index.min(state.up_next.len().saturating_sub(1));
                 self.playback = *state;
             }
+            Event::NewEpisodes { episodes, pending, failed } => {
+                self.new_index = self.new_index.min(episodes.len().saturating_sub(1));
+                self.new_episodes = episodes;
+                (self.refresh_pending, self.refresh_failed) = (pending, failed);
+            }
             Event::Subscriptions(subscriptions) => {
                 self.subscriptions_index = self.subscriptions_index.min(subscriptions.len().saturating_sub(1));
                 self.subscriptions = subscriptions;
@@ -512,6 +529,9 @@ impl App {
 
     /// The episode the selection is on, wherever that is, as something playable.
     fn selected_item(&self) -> Option<QueueItem> {
+        if self.section == Section::NewEpisodes {
+            return self.new_episodes.get(self.new_index).map(|episode| episode.item.clone());
+        }
         if self.section != Section::Discover {
             return None;
         }
@@ -657,12 +677,13 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => self.section = Section::Help,
             // Inside an episode the digits belong to the links.
-            KeyCode::Char(digit @ '1'..='5') if !(self.section == Section::Discover && self.episode.is_some()) => {
+            KeyCode::Char(digit @ '1'..='6') if !(self.section == Section::Discover && self.episode.is_some()) => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
             }
             code => match self.section {
                 Section::Discover => self.on_discover_key(code),
                 Section::Subscriptions => self.on_subscriptions_key(code),
+                Section::NewEpisodes => self.on_new_episodes_key(code),
                 Section::UpNext => self.on_up_next_key(code),
                 Section::Settings => self.on_settings_key(code),
                 Section::Help => {
@@ -725,7 +746,7 @@ impl App {
             KeyCode::Char('q') => self.should_quit = true,
             KeyCode::Char('?') => (self.section, self.player_open) = (Section::Help, false),
             // The menu stays one key away, as on every other screen.
-            KeyCode::Char(digit @ '1'..='5') => {
+            KeyCode::Char(digit @ '1'..='6') => {
                 self.section = Section::ALL[digit as usize - '1' as usize];
                 self.player_open = false;
             }
@@ -751,6 +772,27 @@ impl App {
                 }
             }
             code => move_selection(&mut self.subscriptions_index, self.subscriptions.len(), code),
+        }
+    }
+
+    fn on_new_episodes_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Char('r') => self.commands.push(Command::RefreshSubscriptions),
+            // The episode with its notes and chapters lives in its podcast: open that, then the episode.
+            KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                if let Some(episode) = self.new_episodes.get(self.new_index).cloned() {
+                    let reference = PodcastRef {
+                        title: episode.item.podcast.clone(),
+                        feed_url: episode.item.feed_url.clone(),
+                        ..PodcastRef::default()
+                    };
+                    self.open_podcast(reference);
+                    if let Some(view) = &mut self.podcast {
+                        view.wanted_guid = episode.item.guid;
+                    }
+                }
+            }
+            code => move_selection(&mut self.new_index, self.new_episodes.len(), code),
         }
     }
 
@@ -1094,6 +1136,7 @@ impl App {
                 self.on_discover_key(code);
             }
             Section::Subscriptions => self.on_subscriptions_key(code),
+            Section::NewEpisodes => self.on_new_episodes_key(code),
             Section::UpNext => self.on_up_next_key(code),
             Section::Settings => self.on_settings_key(code),
             Section::Help => {}

@@ -2,6 +2,7 @@
 //! reads [`Event`]s; everything slow happens on worker threads in between.
 //! Nothing here knows what a terminal is.
 
+pub mod fresh;
 pub mod keeper;
 pub mod playback;
 pub mod settings;
@@ -21,6 +22,7 @@ use torrocast_directory::{DirectoryError, DirectoryProvider};
 use torrocast_feed::chapters;
 use torrocast_net::{Fetch, FetchError};
 
+pub use fresh::NewEpisode;
 pub use playback::{NowPlaying, QueueItem, Status};
 pub use settings::Settings;
 pub use torrocast_directory::{Category, EpisodeRef, PodcastRef, ProviderId, merge};
@@ -99,6 +101,8 @@ pub enum Command {
         mp3_url: Option<String>,
     },
     Transport(Transport),
+    /// Fetches every subscribed feed again; the list of new episodes follows as the answers come in.
+    RefreshSubscriptions,
     /// Subscribes to a podcast, or ends the subscription. `guid` is the feed's `podcast:guid`, if it has one.
     SetSubscribed {
         feed_url: String,
@@ -171,6 +175,13 @@ pub enum Event {
         title: String,
         place: Option<usize>,
     },
+    /// What the subscriptions published lately and is still unheard. `pending` feeds
+    /// are yet to answer; `failed` ones did not.
+    NewEpisodes {
+        episodes: Vec<NewEpisode>,
+        pending: usize,
+        failed: usize,
+    },
     /// All subscriptions, alphabetically — at the start and whenever they change, here or on another device.
     Subscriptions(Vec<Subscription>),
 }
@@ -191,6 +202,11 @@ struct Shared {
 
 /// Chapters found for the playing episode, by [`QueueItem::key`].
 type Found = (String, Vec<Chapter>);
+/// A subscribed feed, fetched again: its address and what came of it.
+type Refreshed = (String, Result<Arc<Podcast>, Problem>);
+
+/// Feeds fetched side by side during a refresh. Polite to hosters, quick enough for a long list.
+const REFRESH_WORKERS: usize = 4;
 
 pub struct Core {
     shared: Arc<Shared>,
@@ -201,6 +217,11 @@ pub struct Core {
     /// Opened with the first episode, so browsing never touches the sound card.
     player: Option<(Player, Receiver<PlayerEvent>)>,
     found: (Sender<Found>, Receiver<Found>),
+    refreshed: (Sender<Refreshed>, Receiver<Refreshed>),
+    /// The state of the running or last refresh.
+    latest: Vec<(String, Arc<Podcast>)>,
+    refresh_pending: usize,
+    refresh_failed: usize,
     /// `None` when the library folder could not be opened; everything then lasts for the session.
     keeper: Option<Keeper>,
 }
@@ -224,6 +245,10 @@ impl Core {
             playback: Playback::default(),
             player: None,
             found: channel(),
+            refreshed: channel(),
+            latest: Vec::new(),
+            refresh_pending: 0,
+            refresh_failed: 0,
             keeper,
         };
         let mut core = core;
@@ -273,11 +298,14 @@ impl Core {
                 Event::EpisodeResults { request, outcome }
             }),
             Command::Transport(transport) => self.transport(transport),
+            Command::RefreshSubscriptions => self.refresh(),
             Command::SetSubscribed { feed_url, title, guid, subscribed } => {
                 if let Some(keeper) = &mut self.keeper {
                     keeper.set_subscribed(keeper::podcast_id(guid.as_deref(), &feed_url), feed_url, title, subscribed);
                     let _ = self.events.send(Event::Subscriptions(keeper.subscriptions()));
                 }
+                // The list of new episodes follows the subscriptions.
+                self.refresh();
             }
             Command::Charts { request, category } => self.spawn(move |shared| {
                 let outcome = shared.apple.charts(shared.fetch.as_ref(), &country, category).map_err(Problem::from);
@@ -337,9 +365,46 @@ impl Core {
         self.publish();
     }
 
+    /// Fetches all subscribed feeds again, a few at a time.
+    fn refresh(&mut self) {
+        let Some(keeper) = &self.keeper else { return };
+        if self.refresh_pending > 0 {
+            return;
+        }
+        let feeds: Vec<String> = keeper.subscriptions().into_iter().map(|subscription| subscription.feed_url).collect();
+        self.latest.clear();
+        self.refresh_pending = feeds.len();
+        self.refresh_failed = 0;
+        let queue = Arc::new(Mutex::new(feeds));
+        for _ in 0..REFRESH_WORKERS {
+            let (shared, queue, results) = (Arc::clone(&self.shared), Arc::clone(&queue), self.refreshed.0.clone());
+            thread::spawn(move || {
+                loop {
+                    let Some(feed_url) = queue.lock().ok().and_then(|mut queue| queue.pop()) else { return };
+                    let outcome = open_feed(&shared, &feed_url, true);
+                    if results.send((feed_url, outcome)).is_err() {
+                        return;
+                    }
+                }
+            });
+        }
+        self.publish_new();
+    }
+
+    fn publish_new(&self) {
+        let is_played = |item: &QueueItem| self.keeper.as_ref().is_some_and(|keeper| keeper.is_played(item));
+        let episodes = fresh::newest(&self.latest, chrono::Utc::now(), is_played);
+        let _ = self.events.send(Event::NewEpisodes {
+            episodes,
+            pending: self.refresh_pending,
+            failed: self.refresh_failed,
+        });
+    }
+
     /// Writes down what playback changed.
     fn keep(&mut self) {
         let notes = self.playback.take_notes();
+        let heard_one = notes.iter().any(|note| note.played);
         if let Some(keeper) = &mut self.keeper {
             keeper.save_notes(notes);
             // What plays is kept at the head of the stored list. Should the
@@ -352,6 +417,10 @@ impl Core {
                 .chain(self.playback.up_next.iter().cloned())
                 .collect();
             keeper.save_queue(&stored);
+        }
+        // An episode heard to the end is no longer new.
+        if heard_one {
+            self.publish_new();
         }
     }
 
@@ -420,6 +489,17 @@ impl Core {
                 PlayerEvent::Loading | PlayerEvent::Paused | PlayerEvent::Resumed | PlayerEvent::Stopped => {}
             }
             changed = true;
+        }
+        let answers: Vec<Refreshed> = self.refreshed.1.try_iter().collect();
+        if !answers.is_empty() {
+            for (feed_url, outcome) in answers {
+                self.refresh_pending = self.refresh_pending.saturating_sub(1);
+                match outcome {
+                    Ok(podcast) => self.latest.push((feed_url, podcast)),
+                    Err(_) => self.refresh_failed += 1,
+                }
+            }
+            self.publish_new();
         }
         for (key, chapters) in self.found.1.try_iter().collect::<Vec<_>>() {
             self.playback.set_chapters(&key, chapters);
