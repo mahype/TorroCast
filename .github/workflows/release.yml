@@ -88,7 +88,8 @@ jobs:
           mkdir -p stage && cp target/release/torrocast.exe stage/
 
       # With the Developer ID secrets in place the Mac binary is signed and notarized and opens
-      # without a warning. Without them it is signed ad hoc; RELEASING.md says what users then do.
+      # without a warning. A rehearsal without them signs ad hoc; a tag without them stops here,
+      # so no release goes out that Gatekeeper holds back.
       - name: Sign and notarize (macOS, if the secrets are there)
         if: runner.os == 'macOS'
         env:
@@ -100,6 +101,10 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -z "${CERT_B64:-}" ]]; then
+            if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+              echo "error: a release needs the Apple signing secrets; docs/RELEASING.md lists them" >&2
+              exit 1
+            fi
             echo "No signing secrets: signing ad hoc."
             codesign --force --sign - stage/torrocast
             exit 0
@@ -124,6 +129,10 @@ jobs:
           grep -q "status: Accepted" "$RUNNER_TEMP/notary.log"
           codesign --verify --strict --verbose=2 stage/torrocast
 
+      - name: Forget the signing keychain
+        if: always() && runner.os == 'macOS'
+        run: security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
+
       - name: The binary starts and says its version
         shell: bash
         run: |
@@ -142,16 +151,22 @@ jobs:
           cp stage/torrocast* README.md LICENSE-MIT LICENSE-APACHE "$name/"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             7z a -tzip "$name.zip" "$name" > /dev/null
-            echo "file=$name.zip" >> "$GITHUB_OUTPUT"
+            file="$name.zip"
           else
             tar -czf "$name.tar.gz" "$name"
-            echo "file=$name.tar.gz" >> "$GITHUB_OUTPUT"
+            file="$name.tar.gz"
           fi
+          # A checksum beside each archive, for whoever downloads only the one they need.
+          if command -v sha256sum > /dev/null; then sha256sum "$file" > "$file.sha256"
+          else shasum -a 256 "$file" > "$file.sha256"; fi
+          echo "file=$file" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ steps.package.outputs.file }}
+          path: |
+            ${{ steps.package.outputs.file }}
+            ${{ steps.package.outputs.file }}.sha256
           if-no-files-found: error
 
   release:
@@ -166,11 +181,20 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Checksums
-        run: cd dist && sha256sum torrocast-* > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum torrocast-*.tar.gz torrocast-*.zip > SHA256SUMS && cat SHA256SUMS
+      # Assembled as a draft first, published only when every file is in place — so the
+      # latest release is never one with a download missing.
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "TorroCast ${GITHUB_REF_NAME#v}" \
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          ls -l dist
+          ls dist/torrocast-"$version"-linux-x86_64.tar.gz \
+             dist/torrocast-"$version"-macos-universal.tar.gz \
+             dist/torrocast-"$version"-windows-x86_64.zip > /dev/null
+          gh release create "$GITHUB_REF_NAME" dist/* --draft \
+            --title "TorroCast $version" \
             --notes-file docs/release-notes/${GITHUB_REF_NAME}.md
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

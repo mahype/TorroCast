@@ -10,14 +10,17 @@ service can carry between devices.
 
 ## Install it
 
-Each release carries one archive per system: `linux-x86_64`, `macos-universal` (Apple Silicon
+Each [release](https://github.com/mahype/TorroCast/releases) carries one archive per system: `linux-x86_64`, `macos-universal` (Apple Silicon
 and Intel) and `windows-x86_64`. Unpack it and start `torrocast` from a terminal.
 
 - **Linux:** needs ALSA (`alsa-lib` / `libasound2`), which every desktop has; PipeWire and
   PulseAudio are reached through it.
-- **macOS:** the binary is not notarized yet. A download made with a browser is held back by
-  Gatekeeper; `xattr -d com.apple.quarantine torrocast` lets it through.
+- **macOS:** signed with a Developer ID and notarized (from v0.2.0), so Gatekeeper lets it
+  start. Put it somewhere on your `PATH`, e.g. `/usr/local/bin`.
 - **Windows:** Windows Terminal is the place to run it; the old console shows fewer colours.
+  `daemon`, `status` and `ctl` are Linux and macOS only for now.
+
+Every archive has a `.sha256` beside it; `SHA256SUMS` lists them all.
 
 ## Build it
 

@@ -1,7 +1,10 @@
 # Ein Release ausliefern
 
 Ein Tag der Form `v0.1.0` baut TorroCast für Linux, macOS und Windows und hängt die drei
-Archive samt `SHA256SUMS` an ein GitHub-Release. Das macht `.github/workflows/release.yml`.
+Archive, je eine `.sha256` daneben und `SHA256SUMS` an ein GitHub-Release. Das macht
+`.github/workflows/release.yml` — wie bei TorroMail erst als Entwurf, veröffentlicht wird es
+erst, wenn alle drei Archive da sind. Fehlt eines, bleibt ein Entwurf zurück und nichts wird
+zum neuesten Release.
 
 ## Kurzfassung
 
@@ -43,7 +46,10 @@ die fertige Datei einmal mit `--version` und vergleicht die Antwort mit der erwa
 
 ## macOS: signieren und notarisieren
 
-Ohne Apple-Secrets wird die Datei nur ad hoc signiert. Sie läuft, aber Gatekeeper hält einen
+Ein Tag ohne die Apple-Secrets bricht ab: Kein Release geht hinaus, das Gatekeeper zurückhält.
+Nur ein Probelauf ohne Secrets signiert ad hoc.
+
+Eine ad hoc signierte Datei (Probelauf, oder v0.1.0) läuft, aber Gatekeeper hält einen
 Browser-Download zurück: „Apple konnte nicht überprüfen, ob ‚torrocast‘ frei von Schadsoftware
 ist“ – mit den Knöpfen *In den Papierkorb legen* und *Fertig*, keinem zum Öffnen. Drei Wege daran
 vorbei, solange nicht notarisiert wird:
@@ -80,8 +86,3 @@ rm cert.p12
 Danach zeigt ein Probelauf (`gh workflow run release.yml`), ob Signatur und Notarisierung
 durchgehen, ohne dass etwas veröffentlicht wird. Eine einzelne Programmdatei lässt sich nicht
 „stapeln“: Der Mac fragt das Ergebnis der Notarisierung beim ersten Start online ab.
-
-## Solange das Repository privat ist
-
-Releases eines privaten Repositorys sieht und lädt nur, wer Zugriff hat — angemeldet im Browser
-oder mit `gh release download v0.1.0 -R mahype/TorroCast`.
