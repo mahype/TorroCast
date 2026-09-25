@@ -120,6 +120,12 @@ jobs:
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | xargs)
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kpw" "$keychain"
           identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [[ -z "$identity" ]]; then
+            echo "error: the certificate secret holds no Developer ID Application identity; it holds:" >&2
+            security find-identity -p codesigning "$keychain" >&2 || true
+            exit 1
+          fi
+          echo "Signing as: $identity"
           codesign --force --options runtime --timestamp --sign "$identity" stage/torrocast
           ditto -c -k stage/torrocast "$RUNNER_TEMP/notarize.zip"
           # notarytool ends with 0 even when Apple says no; only "Accepted" is a yes.
